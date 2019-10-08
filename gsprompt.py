@@ -1,12 +1,15 @@
 #!/usr/bin/env python
 from __future__ import unicode_literals
-
+import asyncio
+import array
+import unicodedata
 import argparse
 import requests
 import pyquery
 import json
 import sys
 import time
+import csv
 import threading
 from configobj import ConfigObj
 import numpy as np
@@ -20,6 +23,7 @@ from prompt_toolkit import PromptSession
 from prompt_toolkit import prompt
 from prompt_toolkit.patch_stdout import patch_stdout
 from prompt_toolkit.history import FileHistory
+from prompt_toolkit.eventloop.defaults import use_asyncio_event_loop
 
 host = 'localhost'
 #host = '35.184.211.204'
@@ -116,6 +120,8 @@ class GuruBatch():
 
         self.parser_audience = self.subparsers.add_parser('audience')
         self.parser_audience.add_argument('audience', nargs='?', action="store", default='*')
+        self.parser_audience.add_argument('--at', nargs='?', help='time', default='')
+        self.parser_audience.add_argument('--left', nargs='?', help='time left', default='')
         self.parser_audience.add_argument('--list', action="store_true", default=True)
         self.parser_audience.add_argument('--open', action="store_true", default=True)
         self.parser_audience.add_argument('--start', action="store_true", default=False)
@@ -151,12 +157,14 @@ class GuruBatch():
         self.parser_member.add_argument('--list', action="store_true", default=False)
         self.parser_member.add_argument('--cha', nargs='?', action="store", default='')
         self.parser_member.add_argument('--watch', nargs='?', action="store", default='')
+        self.parser_member.add_argument('--photo', nargs='?', action="store", default='')
         self.parser_member.add_argument('--at', nargs='?', action="store", default='')
         self.parser_member.add_argument('--left', nargs='?', action="store", default='')
         self.parser_member.add_argument('--vote', action="store_true", default=False)
         self.parser_member.add_argument('--stop', action="store_true", default=False)
         self.parser_member.add_argument('--limit', nargs='?', type=int, action="store", default=200)
         self.parser_member.add_argument('--start', nargs='?', type=int, action="store", default=0)
+        self.parser_member.add_argument('--nb', nargs='?', type=int, action="store", default=1)
         self.parser_member.set_defaults(func=self.member)
 
         self.parser_log = self.subparsers.add_parser('log')
@@ -180,7 +188,15 @@ class GuruBatch():
         self.parser_unlock.add_argument('--cha', nargs='?', action="store", default='')
         self.parser_unlock.add_argument('--at', nargs='?', action="store", default='')
         self.parser_unlock.add_argument('--left', nargs='?', action="store", default='')
+        self.parser_unlock.add_argument('--boost', action="store_true", default=False)
         self.parser_unlock.set_defaults(func=self.unlock)
+
+        self.parser_boost = self.subparsers.add_parser('boost')
+        self.parser_boost.add_argument('boost', nargs='?', action="store", default='')
+        self.parser_boost.add_argument('--cha', nargs='?', action="store", default='')
+        self.parser_boost.add_argument('--at', nargs='?', action="store", default='')
+        self.parser_boost.add_argument('--left', nargs='?', action="store", default='')
+        self.parser_boost.set_defaults(func=self.boost)
 
         self.parser_submit = self.subparsers.add_parser('submit')
         self.parser_submit.add_argument('submit', nargs='?', action="store", default='')
@@ -239,9 +255,6 @@ class GuruBatch():
         if self.config.get('players') == None:
             self.config['players'] = {}
 
-        if self.config.get('process') == None:
-            self.config['process'] = {}
-
         self.config.write()
 
         self.strategies = ConfigObj('strategies.ini')
@@ -272,15 +285,27 @@ class GuruBatch():
 
 
     def init_process(self, args):
-        challenges = self.get_joined_challenges()
-        challenges_open = self.get_open_challenges()
-        challenges["challenges"].extend(challenges_open["items"])
 
-        for challenge in challenges["challenges"]:
-                if self.challenges.get(challenge['url']) == None:
-                    self.add_challenge(challenge)
-                    self.log_challenge(challenge)
-        self.ps_restart(args)
+        try:
+            self.purge_challenge()
+            challenges = self.get_joined_challenges()
+            challenges_open = self.get_open_challenges()
+            challenges["challenges"].extend(challenges_open["items"])
+
+            for challenge in challenges["challenges"]:
+                    if self.challenges.get(challenge['url']) == None:
+                        self.add_challenge(challenge)
+                        self.log_challenge(challenge)
+
+            self.ps_restart(args)
+        except Exception as _error:
+            print('error',  _error)
+    def purge_challenge(self):
+        #move closed challenge
+        for section in self.challenges.keys():
+            if datetime.now() > datetime.strptime(self.challenges[section]['end'], "%d/%m/%Y, %H:%M"):
+                self.challenges.pop(section)
+                print('challenge', section, 'popped')
 
     def add_challenge(self, challenge):
         url = challenge["url"]
@@ -426,13 +451,20 @@ class GuruBatch():
                    self.submit_challenge(challenge, value, args)
                if action in "unlock":
                    self.unlock_challenge(challenge, value, args)
+               if action in "boost":
+                   self.boost_challenge(challenge, value, args)
 
                if action in "swap":
                        self.swap_challenge(challenge, value, args)
+               if action in "photo":
+                   self.member_vote_photo_id(challenge, value, args)
+
                if action in "member":
-                       self.member_vote_challenge_member_id(challenge, value)
+                       self.member_vote_challenge_member_id(challenge, value, args)
                if action in "watch":
-                       self.watch_challenge_member_id(challenge, value)
+                       self.watch_challenge_member_id(challenge, value, args)
+               if action in "audience":
+                       self.audience_thread()
                if action == "jauge":
                    print ('exec : ' + 'JAUGE')
 
@@ -444,6 +476,7 @@ class GuruBatch():
 
 #       except (RuntimeError, TypeError, NameError):
        except Exception as _error:
+            print(_error)
             self.ps_update(process_id, 'error')
             pass
 
@@ -465,23 +498,28 @@ class GuruBatch():
                     "%d/%m/%Y, %H:%M")
 
         if not args.all:
-            if timeleft["days"] != 0 or timeleft["hours"] != 0 and  timeleft["minutes"] != 0 or timeleft["seconds"] != 0:
-
+            if (timeleft["days"] != 0 or timeleft["hours"] != 0 and  timeleft["minutes"] != 0 or timeleft["seconds"] != 0) and (self.challenge_details["items"]["challenge"]["member"]['is_joined'] == True):
                 try:
                     vote_data = self.get_votes_panel(self.challenge_details["items"]["challenge"]["url"])
-                    jauge = str(vote_data["voting"]["exposure"]["exposure_factor"])
-                    vote_exposure_factor = str(vote_data["voting"]["exposure"]["vote_exposure_factor"])
-
-                    #rank = str(challenge["member"]["ranking"]["total"]["rank"])
-
-                    #votes =  str(challenge["member"]["ranking"]["total"]["votes"])
-
+                    jauge = ''
+                    vote_exposure_factor = ''
+                    rank = ''
+                    vote = ''
                     total_votes =  self.challenge_details["items"]["challenge"]["votes"]
                     total_players = self.challenge_details["items"]["challenge"]["players"]
-                    #print 'challenge : ', name, '(', challenge, ')', 'jauge', jauge, 'vote_exposure', vote_exposure_factor, 'time-left', timeLeft, 'end at', timeEnd, 'total votes', total_votes, 'total_players', total_players
+                    timeleft = self.challenge_details["items"]["challenge"]["time_left"];
+                    timeLeftString = str("{}D:{}H:{}M".format(timeleft["days"], timeleft["hours"], timeleft["minutes"]))
+                    timeEnd = datetime.fromtimestamp(self.challenge_details["items"]["challenge"]["close_time"]).strftime("%d/%m/%Y, %H:%M")
 
-                except:
-                    print (challenge, vote_data['message'])
+                    jauge = vote_data["voting"]["exposure"]["exposure_factor"]
+                    vote_exposure_factor = vote_data["voting"]["exposure"]["vote_exposure_factor"]
+                        #rank = challenge["member"]["ranking"]["total"]["rank"]
+                        #votes =  challenge["member"]["ranking"]["total"]["votes"]
+
+                    print ('challenge : ', name, '(', challenge, ')', 'jauge', jauge, 'vote_exposure', vote_exposure_factor, 'time-left', timeLeftString, 'end at', timeEnd, 'total votes', total_votes, 'total_players', total_players)
+
+                except Exception as _error:
+                    print (challenge, _error)
             else:
                 print (challenge, "Closed")
         else:
@@ -490,22 +528,31 @@ class GuruBatch():
 
     def post_votes( self, challenge_details, votes):
         if self.session:
-            payload_dict = {'c_id': challenge_details["items"]["challenge"]["id"],
-                'image_ids': np.asarray(votes)}
-            payload = {'image_ids['+str(id)+']': value for id, value in enumerate(votes)}
-            payload['c_id'] = challenge_details["items"]["challenge"]["id"]
-            response = self.session.post('https://gurushots.com/rest/submit_votes', data=payload)
-            content = response.content
-            return json.loads(content)
-        return ''
+            try:
+                payload = {'image_ids['+str(id)+']': value for id, value in enumerate(votes)}
+                payload['c_id'] = challenge_details["items"]["challenge"]["id"]
+                response = self.session.post('https://gurushots.com/rest/submit_votes', data=payload)
+                content = response.content
+                return json.loads(content)
+            except Exception as _error:
+                print(_error)
+                return ''
 
-    def vote_photo(self, challenge, votes, photo):
+
+    def member_vote_photo_id(self, challenge, photo, args):
         challenge_details = self.get_challenge(challenge)
         if challenge_details["items"]["challenge"]["close_time"] != 0:
             votes_panel = []
-            votes_panel.append(u"e997ce4e79e0c6bbb21501c6da762835")
+            print(args.photo.encode('utf-8'))
+            photo_id = args.photo
+            photo_id_u = u"fee36ce85e56ded46a7b1f770d169ee1"
+            photo_id_unicode = args.photo.encode()
+            print(photo_id, photo_id_u, photo_id_unicode)
+            votes_panel.append('u', photo_id_u)
+            #votes_panel.append('u', photo_id_u)
             self.post_votes(challenge_details, votes_panel)
-            self.log_action(challenge, "votes", str(args.votes))
+            #self.post_votes(challenge_details, votes_panel)
+            self.log_action(challenge, "photo", str(len(votes_panel)))
 
     def vote_challenge(self, challenge, votes):
         challenge_details = self.get_challenge(challenge)
@@ -533,7 +580,7 @@ class GuruBatch():
             self.post_votes(challenge_details, votes_panel)
             self.log_action(challenge, "vote" , str(votes))
 
-    def member_vote_challenge_member_id(self, challenge, member_id):
+    def member_vote_challenge_member_id(self, challenge, member_id, args):
         challenge_details = self.get_challenge(challenge)
         vote_page = 0
         if challenge_details["items"]["challenge"]["close_time"] != 0:
@@ -541,15 +588,18 @@ class GuruBatch():
             votes = []
             vote_data = self.get_votes_panel(challenge)
             vote_page = 0
+            nb = 1
             while vote_data and self.members[member_id]['stop'] == False:
-                print (challenge, "member voting", member_id, vote_page)
+                print (challenge, "member voting", nb, args.member, vote_page)
                 for image in vote_data["images"]:
                     if image["member_id"] == member_id:
                         votes.append(image["id"])
                         self.post_votes(challenge_details, votes)
-                        print (challenge, "member voted", member_id, vote_page)
+                        print (challenge, "member voted", nb, args.member, vote_page)
+                        nb = nb + 1
                         #self.log_action(challenge, "member voted", member_id)
-                        return
+                        if nb > args.nb:
+                            return
                 vote_index = 0
                 votes = []
                 sleep(1)
@@ -559,7 +609,10 @@ class GuruBatch():
             if self.members[member_id] == True:
                 self.log_action(challenge, "member vote aborted", member_id)
 
-    def watch_challenge_member_id(self, challenge, member_id):
+
+
+
+    def watch_challenge_member_id(self, challenge, member_id, args):
         # get followings photos
         # if none photo : none
         # if prec none :  image :> submit
@@ -620,7 +673,7 @@ class GuruBatch():
         if challenge_details["items"]["challenge"]["close_time"] != 0:
             vote_data = self.get_votes_panel(challenge)
             print('Filling ' + challenge_details["items"]["challenge"]["title"] + ' exposure : ' + str(vote_data["voting"]["exposure"]["exposure_factor"]))
-            if (vote_data["voting"]["exposure"]["exposure_factor"] < fill):
+            if (vote_data["voting"]["exposure"]["exposure_factor"] < int(fill)):
                 vote_count_max = int(fill) - int(vote_data["voting"]["exposure"]["exposure_factor"])
                 self.vote_challenge(challenge, vote_count_max)
 
@@ -630,6 +683,11 @@ class GuruBatch():
         if challenge_details["items"]["challenge"]["close_time"] != 0:
             self.swap_photo(challenge_details["items"]["challenge"]["id"], swap, args.by)
 
+    def boost_challenge(self, challenge, photo_id, args):
+        challenge_details = self.get_challenge(challenge)
+        if challenge_details["items"]["challenge"]["close_time"] != 0:
+            self.boost_photo(challenge_details["items"]["challenge"]["id"], photo_id)
+
     def submit_challenge(self, challenge, submit, args):
         challenge_details = self.get_challenge(challenge)
         if challenge_details["items"]["challenge"]["close_time"] != 0:
@@ -638,7 +696,7 @@ class GuruBatch():
     def unlock_challenge(self, challenge, unlock, args):
         challenge_details = self.get_challenge(challenge)
         if challenge_details["items"]["challenge"]["close_time"] != 0:
-            self.unlock_key(challenge_details["items"]["challenge"]["id"])
+            self.unlock_key(challenge_details["items"]["challenge"]["id"], args.boost)
 
 
     def log_challenge(self, challenge):
@@ -667,8 +725,8 @@ class GuruBatch():
 
 
     def audience_add(self, challenge, args):
-        print ('audience ' + challenge['title'])
-        self.challenges[challenge['url']]['audience'] = True
+        print ('audience ' + self.challenges[challenge]['title'])
+        self.challenges[challenge]['audience'] = True
         #self.challenges[challenge['url']]['audience_delay'] = args.delay
         self.challenges.write()
 
@@ -722,42 +780,41 @@ class GuruBatch():
                         self.challenges[section]['audience'] = False
                         self.challenges.write()
                     else:
-                        last_votes = self.challenges[section]['last_votes']
-                        audience = json_audience_body
-                        audience[0]['measurement'] = 'audiences1'
-                        audience[0]["tags"]['challenge'] = section
-                        audience[0]["fields"]['total_votes'] = self.convert_si_to_number(challenge_details["items"]["challenge"]["votes"])
-                        audience[0]["fields"]['delta_votes'] = self.convert_si_to_number(challenge_details["items"]["challenge"]["votes"]) - self.convert_si_to_number(last_votes)
-                        audience[0]["fields"]['players'] = challenge_details["items"]["challenge"]["players"]
-                        audience[0]["time"] = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+                        with open('audience_' + section + '_file.csv', mode='a') as audience_file:
+                            audience_writer = csv.writer(audience_file, delimiter=',', quotechar='"',
+                                                         quoting=csv.QUOTE_MINIMAL)
 
-                        print ('audience ',  audience[0]["tags"]['challenge'], 'votes', audience[0]["fields"]['total_votes'] ,  ' ecart votes' ,  str(audience[0]["fields"]['delta_votes']))
+                            last_votes = self.challenges[section]['last_votes']
+                            audience = json_audience_body
+                            audience[0]['measurement'] = 'audiences1'
+                            audience[0]["tags"]['challenge'] = section
+                            audience[0]["fields"]['total_votes'] = self.convert_si_to_number(challenge_details["items"]["challenge"]["votes"])
+                            audience[0]["fields"]['delta_votes'] = self.convert_si_to_number(challenge_details["items"]["challenge"]["votes"]) - self.convert_si_to_number(last_votes)
+                            audience[0]["fields"]['players'] = challenge_details["items"]["challenge"]["players"]
+                            audience[0]["time"] = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+                            timeLeftString = str(
+                                "{}D:{}H:{}M".format(timeleft["days"], timeleft["hours"], timeleft["minutes"]))
+                            print ('audience ',  audience[0]["tags"]['challenge'], 'votes', audience[0]["fields"]['total_votes'] ,  ' ecart votes' ,  str(audience[0]["fields"]['delta_votes']))
+                            audience_writer.writerow([audience[0]["time"], timeLeftString, audience[0]["fields"]['total_votes'], audience[0]["fields"]['delta_votes'], audience[0]["fields"]['players']])
 
-                        last_votes = challenge_details["items"]["challenge"]["votes"]
-                        self.challenges[section]['last_votes'] = last_votes
-                        self.challenges.write()
-                        if client is not None:
-                            # out = store_record(es, 'ranks', 'rank', doc)
-                            #print ('audience ', section, ' ecart votes' ,  str(audience[0]["fields"]['delta']))
-                            client.write_points(audience)
+                            last_votes = challenge_details["items"]["challenge"]["votes"]
+                            self.challenges[section]['last_votes'] = last_votes
+                            self.challenges.write()
+                            #if client is not None:
+                                # out = store_record(es, 'ranks', 'rank', doc)
+                                #print ('audience ', section, ' ecart votes' ,  str(audience[0]["fields"]['delta']))
+                                #client.write_points(audience)
             sleep(5*60)
         #print" ended", 'Audience'
 
     def audience_start(self, args):
         if self.player in 'audience':
-            if  self.config['players'][self.player]['process'].get('audience') == None:
-                self.audienceThread = threading.Thread(target=self.audience_thread, name='audience')
-                self.audienceThread.daemon = True  # Daemonize thread
-                self.audienceThread.start()
-                self.ps_add('audience', self.audienceThread.name)
+            self.action_exec_args("audience", "audience", '', args)
         else:
             print ('only audience player could start')
 
     def audience_stop(self, args):
         self.stillAudienceRunning = False
-        self.audienceThread.join()
-        self.args.pop = 'audience'
-        self.ps_pop(args)
 
     def audience(self, args):
         challenges = self.get_joined_challenges()
@@ -768,9 +825,10 @@ class GuruBatch():
             self.audience_stop(args)
 
         if args.add:
-            for challenge in challenges["challenges"]:
-                if args.challenge in challenge["url"]:
-                    self.audience_add(challenge, args)
+            sel = args.audience
+            for section in self.challenges.keys():
+                if sel in '*' or sel in section :
+                    self.audience_add(section, args)
 
         if args.list:
             for section in self.challenges.keys():
@@ -878,11 +936,24 @@ class GuruBatch():
                 self.config['challenge'] = section
                 self.config.write()
 
-    def submit(self, args):
+    def boost(self, args):
         if args.cha:
             sel = args.cha
         else:
             sel = self.config['players'][batch.player]['last_challenge']
+
+        for section in self.challenges.keys():
+            if  sel in section :
+                self.action_exec_args(section, "boost", args.boost, args)
+                self.config['challenge'] = section
+                self.config.write()
+
+
+    def submit(self, args):
+        if args.cha:
+            sel = args.cha
+        else:
+            sel = self.config['players'][self.player]['last_challenge']
 
         for section in self.challenges.keys():
             if sel in '*' or sel in section :
@@ -990,7 +1061,7 @@ class GuruBatch():
                         sel = section
             for _strategie in self.strategies.keys():
                 if args.strategie in _strategie:
-                    for step in self.strategies[args.strategie].keys():
+                    for step in self.strategies[_strategie].keys():
                         cmd = self.strategies[_strategie][step]+' --cha ' + str(sel)
                         cmd_args = self.parser.parse_args(cmd.split())
                         cmd_args.cmde = cmd
@@ -1007,12 +1078,38 @@ class GuruBatch():
     def member(self, args):
         sel = args.member
         self.member_id = str(self.get_member_id())
-        if args.vote:
+        if args.stop:
+            if args.cha:
+                for section in self.challenges.keys():
+                    if args.cha in section:
+                        followings = self.get_followings(self.member_id, args)
+                        for following in followings["items"]:
+                            if sel in '*' or sel in following['member']["user_name"]:
+                                args.member = following['member']["user_name"]
+                                if args.vote:
+                                    self.members[following["member"]["id"]]['stop'] = True
+                                    args.vote = False
+                                if args.watch:
+                                    self.followings[following["member"]["id"]]['stop'] = True
+                                    args.watch = False
+        if args.vote and args.photo is not '':
             for section in self.challenges.keys():
                 if args.cha in section:
                     followings = self.get_followings(self.member_id, args)
                     for following in followings["items"]:
                         if sel in '*' or sel in following['member']["user_name"]:
+                            args.member = following['member']["user_name"]
+                            self.members[str(following["member"]["id"])] = {}
+                            self.members[str(following["member"]["id"])]['stop'] = False
+                            self.action_exec_args(section, "photo", following["member"]["id"], args)
+
+        if args.vote and args.photo is '':
+            for section in self.challenges.keys():
+                if args.cha in section:
+                    followings = self.get_followings(self.member_id, args)
+                    for following in followings["items"]:
+                        if sel in '*' or sel in following['member']["user_name"]:
+                            args.member = following['member']["user_name"]
                             self.members[str(following["member"]["id"])] = {}
                             self.members[str(following["member"]["id"])]['stop'] = False
                             self.action_exec_args(section, "member", following["member"]["id"], args)
@@ -1023,26 +1120,16 @@ class GuruBatch():
                     followings = self.get_followings(self.member_id, args)
                     for following in followings["items"]:
                         if sel in '*' or sel in following['member']["user_name"]:
+                            args.member = following['member']["user_name"]
                             self.watchings[str(following["member"]["id"])] = {}
                             self.watchings[str(following["member"]["id"])]['stop'] = False
                             self.action_exec_args(section, "watch", following["member"]["id"], args)
 
-        if args.stop:
-            if args.cha:
-                for section in self.challenges.keys():
-                    if args.cha in section:
-                        followings = self.get_followings(self.member_id, args)
-                        for following in followings["items"]:
-                            if sel in '*' or sel in following:
-                                if args.vote:
-                                    self.members[following["member"]["id"]]['stop'] = True
-                                if args.watch:
-                                    self.followings[following["member"]["id"]]['stop'] = True
 
         if args.list:
             followings = self.get_followings(self.member_id, args)
             for following in followings["items"]:
-                if sel in '*' or sel in following :
+                if sel in '*' or sel in following['member']["user_name"]:
                      print (following["member"]["user_name"])
 
     def challenge_batch(self, section, key, encode=False):
@@ -1077,6 +1164,18 @@ class GuruBatch():
             'X-token': self.xtoken
         })
 
+    def player_connect(self, args):
+        # challenge = 4257
+
+        session = requests.Session()
+        session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (X11; Linux i686; rv:39.0) Gecko/20100101 Firefox/39.0',
+            'x-api-version': '4',
+            'x-env': 'WEB',
+            'X-requested-with': 'XMLHttpRequest',
+            'X-token': self.config['players'][args.player]['xtoken']
+        })
+        return session
 
     def submit_to_challenge(self, challenge_id, photo_id):
         if self.session:
@@ -1091,6 +1190,16 @@ class GuruBatch():
             return json.loads(content)
         return {}
 
+    def boost_photo(self, challenge_id, photo_id):
+        if self.session:
+            images=[]
+            images.append(photo_id)
+            payload = {'image_id': photo_id}
+            payload['c_id'] = challenge_id
+            response = self.session.post('https://gurushots.com/rest/boost_photo', data=payload)
+            content = response.content
+            return json.loads(content)
+        return {}
 
     def swap_photo(self, challenge_id, photo_id, new_photo_id):
         if self.session:
@@ -1104,10 +1213,13 @@ class GuruBatch():
             return json.loads(content)
         return {}
 
-    def unlock_key(self, challenge_id):
+    def unlock_key(self, challenge_id, boost):
         if self.session:
             payload={'c_id' : challenge_id}
-            payload['usage'] = 'JOIN_CHALLENGE'
+            if boost:
+                payload['usage'] = 'EXPOSURE_BOOST'
+            else:
+                payload['usage'] = 'JOIN_CHALLENGE'
             response = self.session.post('https://gurushots.com/rest/key_unlock', data=payload)
             content = response.content
             return json.loads(content)
@@ -1156,29 +1268,41 @@ class GuruBatch():
         print('Hello!')
 
 
-if __name__ == "__main__":
-    our_history = FileHistory('.example-history-file')
-    session = PromptSession(history=our_history)
-
+def interactive_shell():
+    """
+    Like `interactive_shell`, but doing things manual.
+    """
     batch = GuruBatch()
     args = batch.parser.parse_args()
     batch.init(args)
-    print ("Welcome ", batch.player)
-    args.func(args)
-    guru = True
-    while guru:
-#        cmd = raw_input("\n[GuruShell] "+batch.player+":"+ batch.config['players'][batch.player]['last_challenge']+" >> ")
-        with patch_stdout():
-                try:
-                    cmd = session.prompt("\n[GuruShell] "+batch.player+":"+ batch.config['players'][batch.player]['last_challenge']+" >> ")
-                    if cmd:
-                        args = batch.parser.parse_args(cmd.split())
-                        args.cmde = cmd
-                        args.func(args)
-                        if batch.bye:
-                            break
-                except Exception as _error:
-                    print(_error)
-                except:
-                    print('Something wrong')
+
+
+    our_history = FileHistory('.example-history-file')
+
+    # Create Prompt.
+    session = PromptSession('Say something: ', history=our_history)
+
+    # Run echo loop. Read text from stdin, and reply it back.
+    while True:
+        try:
+            result = session.prompt('>>', default='')
+            print('You said: "{0}"'.format(result))
+            if result is not '':
+                if 'bye' in result:
+                    return
+                else:
+                    args = batch.parser.parse_args(result.split())
+                    args.func(args)
+        except (EOFError, KeyboardInterrupt):
+            return
+
+def main():
+    with patch_stdout():
+         interactive_shell()
+         print('Quitting event loop. Bye.')
+
+
+if __name__ == '__main__':
+    main()
+
 
