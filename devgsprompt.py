@@ -68,7 +68,6 @@ def datetime_to_utc_milliseconds(aDateTime):
 class GuruBatch():
     def __init__(self):
         self.parser = argparse.ArgumentParser(description='challenge')
-        self.parser.add_argument('--cha', nargs='?', action="store", default='')
         self.parser.add_argument('--player', nargs='?', help='Player', default='')
         self.parser.add_argument('--xtoken', help='xtoken', required=False)
         self.parser.add_argument('--cmde', nargs='?', help='Cmde', default='')
@@ -116,7 +115,7 @@ class GuruBatch():
         self.parser_challenge.add_argument('--display', action="store_true", default=False)
         self.parser_challenge.add_argument('--replay', action="store_true", default=False)
         self.parser_challenge.add_argument('--update', action="store_true", default=False)
-
+        self.parser_challenge.add_argument('--cha', nargs='?', action="store", default='')
         self.parser_challenge.set_defaults(func=self.challenge)
 
         self.parser_audience = self.subparsers.add_parser('audience')
@@ -134,16 +133,18 @@ class GuruBatch():
         self.parser_fill = self.subparsers.add_parser('fill')
         self.parser_fill.add_argument('fill', nargs='?', action="store", default='*')
         self.parser_fill.add_argument('--list', action="store_true", default=False)
+        self.parser_fill.add_argument('--cha', nargs='?', action="store", default='')
         self.parser_fill.add_argument('--player', nargs='?', action="store", default='')
         self.parser_fill.add_argument('--all', action="store_true", default=False)
         self.parser_fill.add_argument('--at', nargs='?', action="store", default='')
         self.parser_fill.add_argument('--left', nargs='?', action="store", default='')
-        self.parser_fill.add_argument('--above', nargs='?', type=int, action="store", default=100)
+        self.parser_fill.add_argument('--above', action="store_true", default=True)
         self.parser_fill.set_defaults(func=self.fill)
 
         self.parser_vote = self.subparsers.add_parser('vote')
         self.parser_vote.add_argument('vote', nargs='?', action="store", default='1')
         self.parser_vote.add_argument('--list', action="store_true", default=False)
+        self.parser_vote.add_argument('--cha', nargs='?', action="store", default='')
         self.parser_vote.add_argument('--player', nargs='?', action="store", default='')
         self.parser_vote.add_argument('--all', action="store_true", default=False)
         self.parser_vote.add_argument('--at', nargs='?', action="store", default='')
@@ -154,9 +155,9 @@ class GuruBatch():
         self.parser_member = self.subparsers.add_parser('member')
         self.parser_member.add_argument('member', nargs='?', action="store", default='*')
         self.parser_member.add_argument('--list', action="store_true", default=False)
+        self.parser_member.add_argument('--cha', nargs='?', action="store", default='')
         self.parser_member.add_argument('--watch', nargs='?', action="store", default='')
         self.parser_member.add_argument('--photo', nargs='?', action="store", default='')
-        self.parser_member.add_argument('--who', action="store_true", default=False)
         self.parser_member.add_argument('--at', nargs='?', action="store", default='')
         self.parser_member.add_argument('--left', nargs='?', action="store", default='')
         self.parser_member.add_argument('--vote', action="store_true", default=False)
@@ -168,6 +169,7 @@ class GuruBatch():
 
         self.parser_log = self.subparsers.add_parser('log')
         self.parser_log.add_argument('log', nargs='?', action="store", default='.')
+        self.parser_log.add_argument('--cha', nargs='?', action="store", default='')
         self.parser_log.add_argument('--all', action="store_true", default=False)
         self.parser_log.add_argument('--at', nargs='?', action="store", default='')
         self.parser_log.add_argument('--left', nargs='?', action="store", default='')
@@ -175,6 +177,7 @@ class GuruBatch():
 
         self.parser_swap = self.subparsers.add_parser('swap')
         self.parser_swap.add_argument('swap', nargs='?', action="store", default='1')
+        self.parser_swap.add_argument('--cha', nargs='?', action="store", default='')
         self.parser_swap.add_argument('--by', nargs='?', action="store", default='')
         self.parser_swap.add_argument('--at', nargs='?', action="store", default='')
         self.parser_swap.add_argument('--left', nargs='?', action="store", default='')
@@ -182,6 +185,7 @@ class GuruBatch():
 
         self.parser_unlock = self.subparsers.add_parser('unlock')
         self.parser_unlock.add_argument('unlock', nargs='?', action="store", default='')
+        self.parser_unlock.add_argument('--cha', nargs='?', action="store", default='')
         self.parser_unlock.add_argument('--at', nargs='?', action="store", default='')
         self.parser_unlock.add_argument('--left', nargs='?', action="store", default='')
         self.parser_unlock.add_argument('--boost', action="store_true", default=False)
@@ -189,12 +193,14 @@ class GuruBatch():
 
         self.parser_boost = self.subparsers.add_parser('boost')
         self.parser_boost.add_argument('boost', nargs='?', action="store", default='')
+        self.parser_boost.add_argument('--cha', nargs='?', action="store", default='')
         self.parser_boost.add_argument('--at', nargs='?', action="store", default='')
         self.parser_boost.add_argument('--left', nargs='?', action="store", default='')
         self.parser_boost.set_defaults(func=self.boost)
 
         self.parser_submit = self.subparsers.add_parser('submit')
         self.parser_submit.add_argument('submit', nargs='?', action="store", default='')
+        self.parser_submit.add_argument('--cha', nargs='?', action="store", default='')
         self.parser_submit.add_argument('--at', nargs='?', action="store", default='')
         self.parser_submit.add_argument('--left', nargs='?', action="store", default='')
         self.parser_submit.set_defaults(func=self.submit)
@@ -202,6 +208,7 @@ class GuruBatch():
 
         self.parser_strategie = self.subparsers.add_parser('strategie')
         self.parser_strategie.add_argument('strategie', nargs='?', action="store", default='*')
+        self.parser_strategie.add_argument('--cha', nargs='?', action="store", default='')
         self.parser_strategie.add_argument('--player', nargs='?', action="store", default='')
         self.parser_strategie.add_argument('--list', action="store_true", default=False)
         self.parser_strategie.add_argument('--start', action="store_true", default=False)
@@ -229,8 +236,8 @@ class GuruBatch():
         self.parser_ps = self.subparsers.add_parser('ps')
         self.parser_ps.add_argument('ps', nargs='?', action="store", default='')
         self.parser_ps.add_argument('--list', action="store_true", default=False)
-        self.parser_ps.add_argument('--restart', action="store_true", default=False)
         self.parser_ps.add_argument('--stop', action="store_true", default=False)
+        self.parser_ps.add_argument('--restart', action="store_true", default=False)
         self.parser_ps.add_argument('--pop', nargs='?', action="store", default='')
         self.parser_ps.add_argument('--purge', action="store_true", default=False)
         self.parser_ps.set_defaults(func=self.ps)
@@ -245,13 +252,13 @@ class GuruBatch():
         self.members = {}
         self.watchings = {}
 
-        self.config = ConfigObj('gurushot.ini')
+        self.config = ConfigObj('devgurushot.ini')
         if self.config.get('players') == None:
             self.config['players'] = {}
 
         self.config.write()
 
-        self.strategies = ConfigObj('strategies.ini')
+        self.strategies = ConfigObj('devvostrategies.ini')
 
     def init(self, args):
         if not args.player:
@@ -307,7 +314,7 @@ class GuruBatch():
 
         if self.challenges.get(url) == None:
             self.challenges[url] = {}
-            self.challenges[url]['title'] = challenge["title"].encode('utf8')
+            self.challenges[url]['title'] = challenge["title"]
             self.challenges[url]['strategie'] = ''
             self.challenges[url]['audience'] = False
             self.challenges[url]['last_votes'] = 0
@@ -321,9 +328,9 @@ class GuruBatch():
             #vote_data = self.get_votes_panel(self.challenge_details["items"]["challenge"]["url"])
             #self.challenges[url]['jauge']  = str(vote_data["voting"]["exposure"]["exposure_factor"])
 
-        #self.challenges[url]['challenge_votes'] = self.challenge_details["items"]["challenge"]["votes"]
-        #self.challenges[url]['challenge_players'] = self.challenge_details["items"]["challenge"]["players"]
-        #self.challenges[url]['rank'] = "-1" #str(challenge["member"]["ranking"]["total"]["rank"])
+        self.challenges[url]['challenge_votes'] = self.challenge_details["items"]["challenge"]["votes"]
+        self.challenges[url]['challenge_players'] = self.challenge_details["items"]["challenge"]["players"]
+        self.challenges[url]['rank'] = "-1" #str(challenge["member"]["ranking"]["total"]["rank"])
         #self.challenges[url]['votes'] =  "-1" #str(challenge["member"]["ranking"]["total"]["votes"])
         #self.list.SetItem(self.index, 4, f"{self.challenge_details["items"]["challenge"]["time_left"]["days"]}D {self.challenge_details["items"]["challenge"]["time_left"]["hours"]}:{self.challenge_details["items"]["challenge"]["time_left"]["minutes"]}:{self.challenge_details["items"]["challenge"]["time_left"]["secondss"]}"
         timeleft = self.challenge_details["items"]["challenge"]["time_left"];
@@ -373,7 +380,6 @@ class GuruBatch():
 
     def action_thread_args(self, challenge, action, value, args):
        process_id = challenge + '-' + action + '-' + str(value) + '-'
-       #args.cmde += ' --cha ' + challenge
        if args.at:
            at_split = args.at.split(':')
            at_day = datetime.now() + timedelta(days=int(at_split[0]))
@@ -404,7 +410,7 @@ class GuruBatch():
 
                     while  datetime.now() <= at_time:
                         sleep(60)
-                        if self.config['players'][self.player]['process'][process_id] == 'stop':
+                        if self.config['players'][self.player]['process'][process_id] = 'stop':
                             self.ps_update(process_id, 'stopped')
                             return
            if args.left:
@@ -418,7 +424,7 @@ class GuruBatch():
                     waiting_time = True
                     while  waiting_time:
                         try:
-                            if self.config['players'][self.player]['process'][process_id] == 'stop':
+                            if self.config['players'][self.player]['process'][process_id] = 'stop':
                                 self.ps_update(process_id, 'stopped')
                                 return
                             sleep(60)
@@ -435,7 +441,7 @@ class GuruBatch():
 
            if exec_action:
                if action in "fill":
-                   self.fill_challenge(challenge, value, args)
+                   self.fill_challenge(challenge, value)
                if action in "vote":
                    if args.photo is not '':
                        self.vote_photo(challenge, votes, args.photo)
@@ -628,42 +634,7 @@ class GuruBatch():
                     sleep(30)
                     pass
 
-    def watch_challenge(self, challenge, args):
-        # get followings photos
-        # if none photo : none
-        # if prec none :  image :> submit
-        # if prec im : swap
 
-
-        while self.watchings[challenge]['watching'] == True:
-            try:
-                #followings_photos = self.get_followings_photos(challenge)
-                challenge_details = self.get_challenge(section);
-                timeleft = challenge_details["items"]["challenge"]["time_left"]
-                if timeleft["days"] == 0 and timeleft["hours"] == 0 and timeleft["minutes"] == 0 and timeleft["seconds"] == 0:
-                    self.challenges[challenge]['watching'] = False
-                    self.challenges.write()
-                else:
-                    #me
-                    #get followers joined
-                    #for each het poto_ids, date, name, votes, rank ?
-                    with open('watch_' + section + '.csv', mode='a') as watch_file:
-                        watch_writer = csv.writer(watch_file, delimiter=',', quotechar='"',
-                                                     quoting=csv.QUOTE_MINIMAL)
-
-                        timeNowString = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
-                        timeLeftString = str(
-                            "{}D:{}H:{}M".format(timeleft["days"], timeleft["hours"], timeleft["minutes"]))
-
-                        audience_writer.writerow(
-                            timeNowString, timeLeftString)
-
-                sleep(1*60)
-            except (RuntimeError, TypeError, NameError):
-                sleep(30)
-                pass
-
-         #print('Thread watching ', challenge, 'termine')
 
 
     def log_action(self, url,  lib, value):
@@ -703,15 +674,14 @@ class GuruBatch():
         #print timeLeftString, ' ', challenge_details["items"]["challenge"]['title'], ' jauge ', jauge, lib, " ", value, ' rank ', rank, ' vote_exposor_factor ', vote_exposure_factor, ' fill_discount ', fill_discount, ' votes ', votes, ' players ', players
         print (timeLeftString, ' ', challenge_details["items"]["challenge"]['title'], ' votes ', votes, ' players ', players)
 
-    def fill_challenge(self, challenge, fill, args):
+    def fill_challenge(self, challenge, fill):
         challenge_details = self.get_challenge(challenge)
         if challenge_details["items"]["challenge"]["close_time"] != 0:
             vote_data = self.get_votes_panel(challenge)
             print('Filling ' + challenge_details["items"]["challenge"]["title"] + ' exposure : ' + str(vote_data["voting"]["exposure"]["exposure_factor"]))
-            if vote_data["voting"]["exposure"]["exposure_factor"] < args.above:
-                if (vote_data["voting"]["exposure"]["exposure_factor"] < int(fill)):
-                    vote_count_max = int(fill) - int(vote_data["voting"]["exposure"]["exposure_factor"])
-                    self.vote_challenge(challenge, vote_count_max)
+            if (vote_data["voting"]["exposure"]["exposure_factor"] < int(fill)):
+                vote_count_max = int(fill) - int(vote_data["voting"]["exposure"]["exposure_factor"])
+                self.vote_challenge(challenge, vote_count_max)
 
 
     def swap_challenge(self, challenge, swap, args):
@@ -1021,7 +991,7 @@ class GuruBatch():
         if args.restart:
             self.ps_restart(args)
 
-        if args.stop:
+        if args.restart:
             self.ps_stop(args)
 
         if args.list:
@@ -1036,11 +1006,6 @@ class GuruBatch():
                 self.config.write()
                 print ("process : ", process_id, "killed")
 
-    def ps_stop(self, args):
-        for process_id in self.config['players'][self.player]['process'].keys():
-            if args.ps in process_id and self.config['players'][self.player]['process'][process_id] in 'waiting':
-                self.ps_update(process_id, 'stop')
-
     def ps_update(self, process_id, status):
         self.config['players'][self.player]['process'][process_id] = status
         self.config.write()
@@ -1051,15 +1016,17 @@ class GuruBatch():
             print ("process id  : ", process_id, "process name", self.config['players'][self.player]['process'][process_id])
 
     def ps_restart(self, args):
-        if self.config['players'][self.player]['process'].keys is not None:
-            for process_id in self.config['players'][self.player]['process'].keys():
-                if self.config['players'][self.player]['process'][process_id] in 'waiting':
-                    args = self.parser.parse_args(self.config['players'][self.player]['cmdes'][process_id].split())
-                    #if args.cha is not None:
-                    #    args.cha = args.cha.replace('_', '-')
-                    args.func(args)
-                else:
-                    self.ps_pop(process_id)
+        for process_id in self.config['players'][self.player]['process'].keys():
+            if self.config['players'][self.player]['process'][process_id] in 'waiting':
+                args = self.parser.parse_args(self.config['players'][self.player]['cmdes'][process_id].split())
+                args.func(args)
+            else:
+                self.ps_pop(process_id)
+
+    def ps_stop(self, args):
+        for process_id in self.config['players'][self.player]['process'].keys():
+            if args.ps in process_id and self.config['players'][self.player]['process'][process_id] in 'waiting':
+                self.ps_update(process_id, 'stop'):
 
     def ps_purge(self, args):
         for process_id in self.config['players'][self.player]['process'].keys():
@@ -1111,7 +1078,7 @@ class GuruBatch():
             for _strategie in self.strategies.keys():
                 if args.strategie in _strategie:
                     for step in self.strategies[_strategie].keys():
-                        cmd = ' --cha ' + str(sel) + ' ' + self.strategies[_strategie][step]
+                        cmd = self.strategies[_strategie][step]+' --cha ' + str(sel)
                         cmd_args = self.parser.parse_args(cmd.split())
                         cmd_args.cmde = cmd
                         cmd_args.func(cmd_args)
@@ -1155,20 +1122,13 @@ class GuruBatch():
         if args.vote and args.photo is '':
             for section in self.challenges.keys():
                 if args.cha in section:
-                    if args.who:
-                        member_id = self.get_gs_member_id(args.member)
-                    else:
-                        followings = self.get_followings(self.member_id, args)
-                        for following in followings["items"]:
-                            if sel in '*' or sel in following['member']["user_name"]:
-                                args.member = following['member']["user_name"]
-                                member_id = following["member"]["id"]
-                                break;
-
-                    self.members[ member_id ] = {}
-                    self.members[member_id ]['stop'] = False
-                    self.action_exec_args(section, "member", member_id , args)
-
+                    followings = self.get_followings(self.member_id, args)
+                    for following in followings["items"]:
+                        if sel in '*' or sel in following['member']["user_name"]:
+                            args.member = following['member']["user_name"]
+                            self.members[str(following["member"]["id"])] = {}
+                            self.members[str(following["member"]["id"])]['stop'] = False
+                            self.action_exec_args(section, "member", following["member"]["id"], args)
 
         if args.watch:
             for section in self.challenges.keys():
@@ -1300,14 +1260,6 @@ class GuruBatch():
 
         return json.loads(content_panel)['items']['page']['member_path']['id']
 
-    def get_gs_member_id(self, member):
-        # get page_ data
-        response_panel = self.session.post('https://gurushots.com/rest/get_page_data', data={
-            'url': 'https://gurushots.com/'+member+'/photos'
-        })
-        content_panel = response_panel.content
-
-        return json.loads(content_panel)['items']['page']['member']['id']
 
     def get_following_photos(self, id, args):
         response_panel = self.session.post('https://gurushots.com/rest/get_top_photos', data={
@@ -1355,13 +1307,9 @@ def interactive_shell():
                 if 'bye' in result:
                     return
                 else:
-                    args.cmde = result
                     args = batch.parser.parse_args(result.split())
-                    if args.cha != None:
-                        args.cha = args.cha.replace('_','-')
                     args.func(args)
-        except Exception as _error:
-            print(_error)
+        except (EOFError, KeyboardInterrupt):
             return
 
 def main():
@@ -1372,3 +1320,5 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+
