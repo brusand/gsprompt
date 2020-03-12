@@ -529,11 +529,17 @@ class GuruBatch():
     def post_votes( self, challenge_details, votes):
         if self.session:
             try:
-                payload = {'image_ids['+str(id)+']': value for id, value in enumerate(votes)}
+                payload = {'tokens['+str(id)+']': value for id, value in enumerate(votes) }
+                payload.update({ 'viewed_tokens['+str(id)+']': value for id, value in enumerate(votes) })
                 payload['c_id'] = challenge_details["items"]["challenge"]["id"]
+                payload['c_token'] = "03AOLTBLR8mMuwAHd5TwbZo5KuuMZYDUVbM-gwQZgojsOHPf-NdlccOUjk6DXw6QE3thLUf6ASwqgQigw1-zTLI6-prjlTIS9ByBXVvePZkYXGwf6MDNIielvqiEWTemoMPWkKVSPme0EOALsd0MrbwDFHxbS02LGpt2u9GwieEKurIUmP7IKNxPEVBGwSR9UTDhWLfUimQK-yDKBVzIZYmbiEHM6gw85-9jDbtGtaAKcEGio83U6b4lmaGWVr8jhWYDKW49PDPrlc0hqYoV1nAOMySaIstamSZP56Zzp3ejo_1A0EqMOL1vGaG5aKt8a-tFY26Q9TRROHx8lVNcJoSBuBHFGUzl2n12JLjqAvJd6BcOweUMlhJapSrwSgHpRl5UQJ58G2AkWdMMvkwbplXZCqQ8cdv_HAzduBOwzutsfuubfCk0Fgqfb1wFK1FrfSGyRVhgrmci12xKmiIrIP1ZIOycaCXI7V0-sY5TW94mmjknYGwUiCdNI"
                 response = self.session.post('https://gurushots.com/rest/submit_votes', data=payload)
-                content = response.content
-                return json.loads(content)
+                content = json.loads(response.content)
+                if content['success'] == True:
+                    return content
+                else:
+                    print(content['error_code'])
+                    return ''
             except Exception as _error:
                 print(_error)
                 return ''
@@ -567,7 +573,7 @@ class GuruBatch():
                 # si non reported
 
                 if vote_image["width"] < 1080:
-                    votes_panel.append(vote_image["id"])
+                    votes_panel.append(vote_image["token"])
                     vote_count = vote_count + 1
 
                 vote_index = vote_index + 1
@@ -593,7 +599,7 @@ class GuruBatch():
                 print (challenge, "member voting", nb, args.member, vote_page)
                 for image in vote_data["images"]:
                     if image["member_id"] == member_id:
-                        votes.append(image["id"])
+                        votes.append(image["token"])
                         self.post_votes(challenge_details, votes)
                         print (challenge, "member voted", nb, args.member, vote_page)
                         nb = nb + 1
@@ -1214,7 +1220,7 @@ class GuruBatch():
         self.session = requests.session()
         self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (X11; Linux i686; rv:39.0) Gecko/20100101 Firefox/39.0',
-            'x-api-version': '4',
+            'x-api-version': '8',
             'x-env': 'WEB',
             'X-requested-with': 'XMLHttpRequest',
             'X-token': self.xtoken
