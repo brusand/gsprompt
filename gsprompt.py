@@ -1002,10 +1002,13 @@ class GuruBatch():
             ranking["followers"][following["member"]["user_name"]]["photos"] = {}
             ranking["followers"][following["member"]["user_name"]]["swap"] = {}
             ranking["followers"][following["member"]["user_name"]]["entries"] = {}
-
+            ranking["followers"][following["member"]["user_name"]]["top-rank"] = 0
 
         ranking["followers"][following["member"]["user_name"]]["name"] = following["member"]["name"].encode('utf8');
         ranking["followers"][following["member"]["user_name"]]["rank"] = following["total"]["rank"];
+        if following["total"]["rank"] > ranking["followers"][following["member"]["user_name"]]["top-rank"]:
+            ranking["followers"][following["member"]["user_name"]]["top-rank"] = following["total"]["rank"]
+
         ranking["followers"][following["member"]["user_name"]]["votes"] = following["total"]["votes"];
         ranking["followers"][following["member"]["user_name"]]["percent"] = following["total"]["percent"]
 
