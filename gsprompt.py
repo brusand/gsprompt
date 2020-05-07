@@ -994,7 +994,7 @@ class GuruBatch():
 
         timeleft = challenge["items"]["challenge"]["time_left"];
         timeLeftString = str("{}D:{}H:{}M".format(timeleft["days"], timeleft["hours"], timeleft["minutes"]))
-        timeAtString = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+        timeAtString = datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")
 
         if ranking['followers'].get(following["member"]["user_name"]) == None:
             ranking['followers'][following["member"]["user_name"]] = {}
