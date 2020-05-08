@@ -80,14 +80,6 @@ class GuruBatch():
         self.parser.add_argument('--shell ', action="store_true", default=False)
         self.subparsers = self.parser.add_subparsers(dest='cmd', help='sub-command help')
 
-        self.parser_fill = self.subparsers.add_parser('fill')
-        self.parser_fill.add_argument('fill', type=int, action="store", default=0)
-        self.parser_fill.add_argument('--at', nargs='?', help='time', default='')
-        self.parser_fill.add_argument('--left', nargs='?', help='time left', default='')
-        self.parser_fill.add_argument('--above', nargs='?', help='above', default='')
-        self.parser_fill.add_argument('--cha', nargs='?', help='above', default='')
-        self.parser_fill.add_argument('--player', nargs='?', help='player', default='')
-        self.parser_fill.set_defaults(func=self.fill)
 
         self.parser_vote = self.subparsers.add_parser('vote')
         self.parser_vote.add_argument('vote', type=int, action="store", default=0)
@@ -143,6 +135,7 @@ class GuruBatch():
         self.parser_fill.add_argument('--all', action="store_true", default=False)
         self.parser_fill.add_argument('--at', nargs='?', action="store", default='')
         self.parser_fill.add_argument('--left', nargs='?', action="store", default='')
+        self.parser_fill.add_argument('--next', nargs='?', help='time left', default='')
         self.parser_fill.add_argument('--above', nargs='?', type=int, action="store", default=100)
         self.parser_fill.set_defaults(func=self.fill)
 
@@ -153,6 +146,7 @@ class GuruBatch():
         self.parser_vote.add_argument('--all', action="store_true", default=False)
         self.parser_vote.add_argument('--at', nargs='?', action="store", default='')
         self.parser_vote.add_argument('--left', nargs='?', action="store", default='')
+        self.parser_vote.add_argument('--next', nargs='?', help='time left', default='')
         self.parser_vote.add_argument('--photo', nargs='?', action="store", default='')
         self.parser_vote.set_defaults(func=self.vote)
 
@@ -183,6 +177,7 @@ class GuruBatch():
         self.parser_swap.add_argument('--by', nargs='?', action="store", default='')
         self.parser_swap.add_argument('--at', nargs='?', action="store", default='')
         self.parser_swap.add_argument('--left', nargs='?', action="store", default='')
+        self.parser_swap.add_argument('--next', nargs='?', help='time left', default='')
         self.parser_swap.set_defaults(func=self.swap)
 
         self.parser_unlock = self.subparsers.add_parser('unlock')
@@ -196,12 +191,14 @@ class GuruBatch():
         self.parser_boost.add_argument('boost', nargs='?', action="store", default='')
         self.parser_boost.add_argument('--at', nargs='?', action="store", default='')
         self.parser_boost.add_argument('--left', nargs='?', action="store", default='')
+        self.parser_boost.add_argument('--next', nargs='?', help='time left', default='')
         self.parser_boost.set_defaults(func=self.boost)
 
         self.parser_submit = self.subparsers.add_parser('submit')
         self.parser_submit.add_argument('submit', nargs='?', action="store", default='')
         self.parser_submit.add_argument('--at', nargs='?', action="store", default='')
         self.parser_submit.add_argument('--left', nargs='?', action="store", default='')
+        self.parser_submit.add_argument('--next', nargs='?', help='time left', default='')
         self.parser_submit.set_defaults(func=self.submit)
 
 
@@ -1448,11 +1445,14 @@ class GuruBatch():
             images.append(photo_id)
             payload = {'image_ids['+str(id)+']': value for id, value in enumerate(images)}
             payload['c_id'] = challenge_id
-            payload['el'] = 'my_challenge_current'
-            payload['el_id'] = True
+            payload['el'] = 'challenge_details'
+            payload['el_id'] = challenge_id
             response = self.session.post('https://gurushots.com/rest/submit_to_challenge', data=payload)
             content = response.content
-            return json.loads(content)
+            _return = json.loads(content)
+            if _return["success"] == False:
+                raise('can t submit')
+            return _return
         return {}
 
     def boost_photo(self, challenge_id, photo_id):
