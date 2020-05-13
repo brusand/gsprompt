@@ -78,7 +78,7 @@ class GuruBatch():
         self.parser.add_argument('--xtoken', help='xtoken', required=False)
         self.parser.add_argument('--cmde', nargs='?', help='Cmde', default='')
         self.parser.add_argument('--shell ', action="store_true", default=False)
-        self.subparsers = self.parser.add_subparsers(dest='cmd', help='sub-command help')
+        self.subparsers = self.parser.add_subparsers(dest='cmdla', help='sub-command help')
 
 
         self.parser_vote = self.subparsers.add_parser('vote')
@@ -130,6 +130,7 @@ class GuruBatch():
 
         self.parser_fill = self.subparsers.add_parser('fill')
         self.parser_fill.add_argument('fill', nargs='?', action="store", default='*')
+        self.parser_fill.add_argument('--cha', nargs='?', action="store", default='')
         self.parser_fill.add_argument('--list', action="store_true", default=False)
         self.parser_fill.add_argument('--player', nargs='?', action="store", default='')
         self.parser_fill.add_argument('--all', action="store_true", default=False)
@@ -215,6 +216,9 @@ class GuruBatch():
 
         self.parser_ranking = self.subparsers.add_parser('ranking')
         self.parser_ranking.add_argument('ranking', nargs='?', action="store", default='*')
+        self.parser_ranking.add_argument('--at', nargs='?', action="store", default='')
+        self.parser_ranking.add_argument('--left', nargs='?', action="store", default='')
+        self.parser_ranking.add_argument('--next', nargs='?', help='time left', default='')
         self.parser_ranking.add_argument('--list', action="store_true", default=False)
         self.parser_ranking.add_argument('--followings', action="store_true", default=False)
         self.parser_ranking.add_argument('--start', action="store_true", default=False)
@@ -256,6 +260,8 @@ class GuruBatch():
 
         self.strategies = ConfigObj('strategies.ini')
 
+        self.sem = asyncio.Semaphore(1)
+
     def init(self, args):
         if not args.player:
            self.player = ''
@@ -294,9 +300,13 @@ class GuruBatch():
                         self.add_challenge(challenge)
                         self.log_challenge(challenge)
 
+                    if self.challenges[challenge['url']].as_bool('ranking'):
+                        self.action_exec_args(challenge['url'], "ranking", '' , args)
+
             self.ps_restart(args)
         except Exception as _error:
             print('error',  _error)
+
     def purge_challenge(self):
         #move closed challenge
         for section in self.challenges.keys():
@@ -337,24 +347,42 @@ class GuruBatch():
 
     def get_votes_panel(self,  url):
         # get vote_ data
-        response_panel = self.session.post('https://gurushots.com/rest/get_vote_data', data={
-            'limit': 100,
-            'url': url
-        })
-        content_panel = response_panel.content
-        return json.loads(content_panel)
+        self.sem.acquire()
+        try:
+            # work with shared resource
+            response_panel = self.session.post('https://gurushots.com/rest/get_vote_data', data={
+                'limit': 100,
+                'url': url
+            })
+            content_panel = response_panel.content
+            return json.loads(content_panel)
+        finally:
+            self.sem.release()
+
 
     def get_joined_challenges(self):
-        response = self.session.post('https://gurushots.com/rest/get_member_joined_active_challenges')
-        content = response.content
-        return json.loads(content)
+        self.sem.acquire()
+        try:
+            # work with shared resource
+            response = self.session.post('https://gurushots.com/rest/get_member_joined_active_challenges')
+            content = response.content
+            return json.loads(content)
+        finally:
+            self.sem.release()
+
 
     def get_open_challenges(self):
-        response = self.session.post('https://gurushots.com/rest/get_member_challenges', data={
-            'filter': 'open'
-        })
-        content = response.content
-        return json.loads(content)
+        self.sem.acquire()
+        try:
+            # work with shared resource
+            response = self.session.post('https://gurushots.com/rest/get_member_challenges', data={
+                'filter': 'open'
+            })
+            content = response.content
+            return json.loads(content)
+        finally:
+            self.sem.release()
+
 
     def ps(self, args):
         for section in self.challenges.keys():
@@ -378,13 +406,13 @@ class GuruBatch():
     def action_thread_args(self, challenge, action, value, args):
        process_id = challenge + '-' + action + '-' + str(value) + '-'
        #args.cmde += ' --cha ' + challenge
-       if args.at:
+       if 'at' in args and args.at:
            at_split = args.at.split(':')
            at_day = datetime.now() + timedelta(days=int(at_split[0]))
            at_time = datetime(at_day.year, at_day.month, at_day.day, int(at_split[1]), int(at_split[2]), 0)
            process_id += 'at-'+at_time.strftime('%Y-%m-%d_%H:%M')
        else:
-           if args.left:
+           if 'left' in args and args.left:
                left_delta = args.left.split(':')
                process_id += 'left-'+"{}H:{}M".format(left_delta[0], left_delta[1])
            else:
@@ -397,7 +425,7 @@ class GuruBatch():
        waiting_time = False
        exec_action = True
        try:
-           if args.at:
+           if 'at' in args and args.at:
                 #print "at ", at
                 at_now = datetime.now()
                 if at_now > at_time:
@@ -411,7 +439,7 @@ class GuruBatch():
                         if self.config['players'][self.player]['process'][process_id] == 'stop':
                             self.ps_update(process_id, 'stopped')
                             return
-           if args.left:
+           if 'left' in args and args.left:
                 challenge_details = self.get_challenge(challenge)
                 timeleft = challenge_details["items"]["challenge"]["time_left"];
                 timeLeftString = str("{}D:{}H:{}M".format(timeleft["days"], timeleft["hours"], timeleft["minutes"]))
@@ -469,6 +497,8 @@ class GuruBatch():
                        self.watch_challenge_member_id(challenge, value, args)
                if action in "audience":
                        self.audience_thread()
+               if action in "ranking":
+                       self.ranking_thread(challenge)
                if action == "jauge":
                    print ('exec : ' + 'JAUGE')
 
@@ -524,30 +554,34 @@ class GuruBatch():
 
                 except Exception as _error:
                     print (challenge, _error)
-            else:
-                print (challenge, "Closed")
+
         else:
             print ('challenge : ', name, '(', challenge[
                 "url"], ')', 'time-left', timeLeft, 'end at', timeEnd, 'votes')
 
     def post_votes( self, challenge_details, votes):
-        if self.session:
-            try:
-                payload = {'tokens['+str(id)+']': value for id, value in enumerate(votes) }
-                payload.update({ 'viewed_tokens['+str(id)+']': value for id, value in enumerate(votes) })
-                payload['c_id'] = challenge_details["items"]["challenge"]["id"]
-                payload['c_token'] = "03AOLTBLR8mMuwAHd5TwbZo5KuuMZYDUVbM-gwQZgojsOHPf-NdlccOUjk6DXw6QE3thLUf6ASwqgQigw1-zTLI6-prjlTIS9ByBXVvePZkYXGwf6MDNIielvqiEWTemoMPWkKVSPme0EOALsd0MrbwDFHxbS02LGpt2u9GwieEKurIUmP7IKNxPEVBGwSR9UTDhWLfUimQK-yDKBVzIZYmbiEHM6gw85-9jDbtGtaAKcEGio83U6b4lmaGWVr8jhWYDKW49PDPrlc0hqYoV1nAOMySaIstamSZP56Zzp3ejo_1A0EqMOL1vGaG5aKt8a-tFY26Q9TRROHx8lVNcJoSBuBHFGUzl2n12JLjqAvJd6BcOweUMlhJapSrwSgHpRl5UQJ58G2AkWdMMvkwbplXZCqQ8cdv_HAzduBOwzutsfuubfCk0Fgqfb1wFK1FrfSGyRVhgrmci12xKmiIrIP1ZIOycaCXI7V0-sY5TW94mmjknYGwUiCdNI"
-                response = self.session.post('https://gurushots.com/rest/submit_votes', data=payload)
-                content = json.loads(response.content)
-                if content['success'] == True:
-                    return content
-                else:
-                    print(content['error_code'])
+        self.sem.acquire()
+        try:
+            # work with shared resource
+            if self.session:
+                try:
+                    payload = {'tokens[' + str(id) + ']': value for id, value in enumerate(votes)}
+                    payload.update({'viewed_tokens[' + str(id) + ']': value for id, value in enumerate(votes)})
+                    payload['c_id'] = challenge_details["items"]["challenge"]["id"]
+                    payload[
+                        'c_token'] = "03AOLTBLR8mMuwAHd5TwbZo5KuuMZYDUVbM-gwQZgojsOHPf-NdlccOUjk6DXw6QE3thLUf6ASwqgQigw1-zTLI6-prjlTIS9ByBXVvePZkYXGwf6MDNIielvqiEWTemoMPWkKVSPme0EOALsd0MrbwDFHxbS02LGpt2u9GwieEKurIUmP7IKNxPEVBGwSR9UTDhWLfUimQK-yDKBVzIZYmbiEHM6gw85-9jDbtGtaAKcEGio83U6b4lmaGWVr8jhWYDKW49PDPrlc0hqYoV1nAOMySaIstamSZP56Zzp3ejo_1A0EqMOL1vGaG5aKt8a-tFY26Q9TRROHx8lVNcJoSBuBHFGUzl2n12JLjqAvJd6BcOweUMlhJapSrwSgHpRl5UQJ58G2AkWdMMvkwbplXZCqQ8cdv_HAzduBOwzutsfuubfCk0Fgqfb1wFK1FrfSGyRVhgrmci12xKmiIrIP1ZIOycaCXI7V0-sY5TW94mmjknYGwUiCdNI"
+                    response = self.session.post('https://gurushots.com/rest/submit_votes', data=payload)
+                    content = json.loads(response.content)
+                    if content['success'] == True:
+                        return content
+                    else:
+                        print(content['error_code'])
+                        return ''
+                except Exception as _error:
+                    print(_error)
                     return ''
-            except Exception as _error:
-                print(_error)
-                return ''
-
+        finally:
+            self.sem.release()
 
     def member_vote_photo_id(self, challenge, photo, args):
         challenge_details = self.get_challenge(challenge)
@@ -851,7 +885,7 @@ class GuruBatch():
         #print" ended", 'Audience'
 
     def ranking_thread(self, challenge):
-        print("new process ", 'ranking')
+        print("new process ", 'ranking', challenge)
 
         stillOpen = True
 
@@ -933,8 +967,14 @@ class GuruBatch():
         # challenges = self.get_joined_challenges()
         if args.start:
             for section in self.challenges.keys():
-                if (args.cha in '*'  or args.cha in section) and self.challenges[section].as_bool('ranking'):
-                    self.ranking_start(args, section)
+                if (args.cha in '*'  or args.cha in section):
+
+                    if self.challenges[section].as_bool('ranking') == False:
+                        self.ranking_add(self.challenges[section], args)
+
+                    if self.challenges[section].as_bool('ranking'):
+                        self.action_exec_args(section, "ranking", '' , args)
+                        #self.ranking_start(args, section)
 
         if args.stop:
             self.ranking_stop(args)
@@ -943,11 +983,6 @@ class GuruBatch():
             for section in self.challenges.keys():
                 if args.cha in '*' or args.cha in section:
                     self.ranking_add(self.challenges[section], args)
-
-                    challenge_details = self.get_challenge(section);
-                    followings = self.get_challenge_followings(challenge_details["items"]["challenge"]["id"]);
-                    for following in followings["items"]:
-                         self.ranking_member(challenge_details, following, True)
 
         if args.followings:
             for section in self.challenges.keys():
@@ -1003,13 +1038,14 @@ class GuruBatch():
 
         ranking["followers"][following["member"]["user_name"]]["name"] = following["member"]["name"].encode('utf8');
         ranking["followers"][following["member"]["user_name"]]["rank"] = following["total"]["rank"];
-        if following["total"]["rank"] > ranking["followers"][following["member"]["user_name"]]["top-rank"]:
+        if following["total"]["rank"] > int(ranking["followers"][following["member"]["user_name"]]["top-rank"]):
             ranking["followers"][following["member"]["user_name"]]["top-rank"] = following["total"]["rank"]
 
         ranking["followers"][following["member"]["user_name"]]["votes"] = following["total"]["votes"];
         ranking["followers"][following["member"]["user_name"]]["percent"] = following["total"]["percent"]
 
         for i in range(len(following["entries"])):
+
             if ranking["followers"][following["member"]["user_name"]]["entries"].get(str(i)) == None:
                 ranking["followers"][following["member"]["user_name"]]["entries"][str(i)] = {}
                 ranking["followers"][following["member"]["user_name"]]["entries"][str(i)]['id'] = following["entries"][i]['id']
@@ -1071,6 +1107,9 @@ class GuruBatch():
                 self.ranking_log(challenge["items"]["challenge"]["url"] , following["member"]["name"].encode('utf8'), following["total"]["rank"], following["total"]["votes"], timeAtString, timeLeftString, 'boost', following["entries"][i]['id'], following["entries"][i]['votes'])
 
             ranking["followers"][following["member"]["user_name"]]["entries"][str(i)]['boost'] = following["entries"][i]["boost"]
+            self.ranking_log(challenge["items"]["challenge"]["url"], following["member"]["name"].encode('utf8'),
+                         following["total"]["rank"], following["total"]["votes"], timeAtString, timeLeftString, 'log',
+                         following["entries"][i]['id'], following["entries"][i]['votes'])
 
         ranking.write()
 
@@ -1104,12 +1143,15 @@ class GuruBatch():
             ranking['followers'] = {}
         ranking.write()
 
+        challenge_details = self.get_challenge(challenge['url']);
+        followings = self.get_challenge_followings(challenge_details["items"]["challenge"]["id"]);
+        for following in followings["items"]:
+            self.ranking_member(challenge_details, following, True)
 
     def ranking_start(self, args, challenge):
         self.rankingThreads[challenge] = threading.Thread(target=self.ranking_thread, name='ranking-'+ challenge, kwargs=dict(challenge=challenge))
         self.rankingThreads[challenge].daemon = True  # Daemonize thread
         self.rankingThreads[challenge].start()
-        #self.config['process']['ranking'][challenge] = self.rankingThreads[challenge].name
         self.config.write()
 
 
@@ -1271,7 +1313,6 @@ class GuruBatch():
         for process_id in self.config['players'][self.player]['process'].keys():
             self.ps_pop(process_id)
 
-
     def ps_add(self, process_id,  status, action, value, args):
         if self.config['players'][self.player].get('process') == None:
             self.config['players'][self.player]['process']= {}
@@ -1400,146 +1441,235 @@ class GuruBatch():
 
     def get_challenge(self, challenge):
         # Attempt to login to Facebook
-        response = self.session.post('https://gurushots.com/rest/get_page_data', data={
-            'url': 'https://gurushots.com/challenge/' + challenge + '/details'
-        })
-        content = response.content
-        return json.loads(content)
+        self.sem.acquire()
+        try:
+            # work with shared resource
+            response = self.session.post('https://gurushots.com/rest/get_page_data', data={
+                'url': 'https://gurushots.com/challenge/' + challenge + '/details'
+            })
+            content = response.content
+            return json.loads(content)
+
+        finally:
+            self.sem.release()
+
 
     def get_member(self, challenge):
-        # Attempt to login to Facebook
-        response = self.session.post('https://gurushots.com/rest/get_page_data', data={
-            'url': 'https://gurushots.com/challenge/' + challenge + '/details'
-        })
-        content = response.content
-        return json.loads(content)
+        self.sem.acquire()
+        try:
+            # work with shared resource
+            # Attempt to login to Facebook
+            response = self.session.post('https://gurushots.com/rest/get_page_data', data={
+                'url': 'https://gurushots.com/challenge/' + challenge + '/details'
+            })
+            content = response.content
+            return json.loads(content)
+
+        finally:
+            self.sem.release()
 
     def connect(self):
         # challenge = 4257
+        self.sem.acquire()
+        try:
+            # work with shared resource
+            self.session = requests.session()
+            self.session.headers.update({
+                'User-Agent': 'Mozilla/5.0 (X11; Linux i686; rv:39.0) Gecko/20100101 Firefox/39.0',
+                'x-api-version': '8',
+                'x-env': 'WEB',
+                'X-requested-with': 'XMLHttpRequest',
+                'X-token': self.xtoken
+            })
 
-        self.session = requests.session()
-        self.session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (X11; Linux i686; rv:39.0) Gecko/20100101 Firefox/39.0',
-            'x-api-version': '8',
-            'x-env': 'WEB',
-            'X-requested-with': 'XMLHttpRequest',
-            'X-token': self.xtoken
-        })
+        finally:
+            self.sem.release()
+
 
     def player_connect(self, args):
         # challenge = 4257
+        self.sem.acquire()
+        try:
+            # work with shared resource
+            session = requests.Session()
+            session.headers.update({
+                'User-Agent': 'Mozilla/5.0 (X11; Linux i686; rv:39.0) Gecko/20100101 Firefox/39.0',
+                'x-api-version': '4',
+                'x-env': 'WEB',
+                'X-requested-with': 'XMLHttpRequest',
+                'X-token': self.config['players'][args.player]['xtoken']
+            })
+            return session
 
-        session = requests.Session()
-        session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (X11; Linux i686; rv:39.0) Gecko/20100101 Firefox/39.0',
-            'x-api-version': '4',
-            'x-env': 'WEB',
-            'X-requested-with': 'XMLHttpRequest',
-            'X-token': self.config['players'][args.player]['xtoken']
-        })
-        return session
+        finally:
+            self.sem.release()
+
+
 
     def submit_to_challenge(self, challenge_id, photo_id):
-        if self.session:
-            images=[]
-            images.append(photo_id)
-            payload = {'image_ids['+str(id)+']': value for id, value in enumerate(images)}
-            payload['c_id'] = challenge_id
-            payload['el'] = 'challenge_details'
-            payload['el_id'] = challenge_id
-            response = self.session.post('https://gurushots.com/rest/submit_to_challenge', data=payload)
-            content = response.content
-            _return = json.loads(content)
-            if _return["success"] == False:
-                raise('can t submit')
-            return _return
-        return {}
+        self.sem.acquire()
+        try:
+            # work with shared resource
+            if self.session:
+                images = []
+                images.append(photo_id)
+                payload = {'image_ids[' + str(id) + ']': value for id, value in enumerate(images)}
+                payload['c_id'] = challenge_id
+                payload['el'] = 'challenge_details'
+                payload['el_id'] = challenge_id
+                response = self.session.post('https://gurushots.com/rest/submit_to_challenge', data=payload)
+                content = response.content
+                _return = json.loads(content)
+                if _return["success"] == False:
+                    raise ('can t submit')
+                return _return
+            return {}
+
+        finally:
+            self.sem.release()
+
 
     def boost_photo(self, challenge_id, photo_id):
-        if self.session:
-            images=[]
-            images.append(photo_id)
-            payload = {'image_id': photo_id}
-            payload['c_id'] = challenge_id
-            response = self.session.post('https://gurushots.com/rest/boost_photo', data=payload)
-            content = response.content
-            return json.loads(content)
-        return {}
+        self.sem.acquire()
+        try:
+            # work with shared resource
+            if self.session:
+                images = []
+                images.append(photo_id)
+                payload = {'image_id': photo_id}
+                payload['c_id'] = challenge_id
+                response = self.session.post('https://gurushots.com/rest/boost_photo', data=payload)
+                content = response.content
+                return json.loads(content)
+            return {}
+
+        finally:
+            self.sem.release()
+
+
+
 
     def swap_photo(self, challenge_id, photo_id, new_photo_id):
-        if self.session:
-            payload={'c_id': challenge_id}
-            payload['el'] = 'my_challenge_current'
-            payload['el_id'] = True
-            payload['img_id'] = photo_id.encode()
-            payload['new_img_id'] = new_photo_id.encode()
-            response = self.session.post('https://gurushots.com/rest/swap', data=payload)
-            content = response.content
-            return json.loads(content)
-        return {}
+        self.sem.acquire()
+        try:
+            # work with shared resource
+            if self.session:
+                payload = {'c_id': challenge_id}
+                payload['el'] = 'my_challenge_current'
+                payload['el_id'] = True
+                payload['img_id'] = photo_id.encode()
+                payload['new_img_id'] = new_photo_id.encode()
+                response = self.session.post('https://gurushots.com/rest/swap', data=payload)
+                content = response.content
+                return json.loads(content)
+            return {}
+
+        finally:
+            self.sem.release()
+
+
 
     def unlock_key(self, challenge_id, boost):
-        if self.session:
-            payload={'c_id' : challenge_id}
-            if boost:
-                payload['usage'] = 'EXPOSURE_BOOST'
-            else:
-                payload['usage'] = 'JOIN_CHALLENGE'
-            response = self.session.post('https://gurushots.com/rest/key_unlock', data=payload)
-            content = response.content
-            return json.loads(content)
-        return {}
+        self.sem.acquire()
+        try:
+            # work with shared resource
+            if self.session:
+                payload = {'c_id': challenge_id}
+                if boost:
+                    payload['usage'] = 'EXPOSURE_BOOST'
+                else:
+                    payload['usage'] = 'JOIN_CHALLENGE'
+                response = self.session.post('https://gurushots.com/rest/key_unlock', data=payload)
+                content = response.content
+                return json.loads(content)
+            return {}
+
+        finally:
+            self.sem.release()
+
 
 
     def get_challenge_followings(self, c_id):
-        # get vote_ data
-        response_panel = self.session.post('https://gurushots.com/rest/get_top_photographer', data={
-            'c_id': c_id,
-            'filter': 'following',
-            'init': 'true',
-            'limit': 200,
-            'start': 0
-        })
-        content_panel = response_panel.content
-        return json.loads(content_panel)
+        self.sem.acquire()
+        try:
+            # work with shared resource
+            # get vote_ data
+            response_panel = self.session.post('https://gurushots.com/rest/get_top_photographer', data={
+                'c_id': c_id,
+                'filter': 'following',
+                'init': 'true',
+                'limit': 200,
+                'start': 0
+            })
+            content_panel = response_panel.content
+            return json.loads(content_panel)
+
+        finally:
+            self.sem.release()
+
 
     def get_followings(self, id, args):
-        # get vote_ data
-        response_panel = self.session.post('https://gurushots.com/rest/get_following', data={
-            'id': id,
-            'limit': args.limit,
-            'start': args.start
-        })
-        content_panel = response_panel.content
-        return json.loads(content_panel)
+        self.sem.acquire()
+        try:
+            # work with shared resource
+            # get vote_ data
+            response_panel = self.session.post('https://gurushots.com/rest/get_following', data={
+                'id': id,
+                'limit': args.limit,
+                'start': args.start
+            })
+            content_panel = response_panel.content
+            return json.loads(content_panel)
+
+        finally:
+            self.sem.release()
+
+
 
     def get_member_id(self):
-        # get vote_ data
-        response_panel = self.session.post('https://gurushots.com/rest/get_page_data', data={
-            'url': 'https://gurushots.com/challenges/my-challenges/current'
-        })
-        content_panel = response_panel.content
+        self.sem.acquire()
+        try:
+            # work with shared resource
+            response_panel = self.session.post('https://gurushots.com/rest/get_page_data', data={
+                'url': 'https://gurushots.com/challenges/my-challenges/current'
+            })
+            content_panel = response_panel.content
 
-        return json.loads(content_panel)['items']['page']['member_path']['id']
+            return json.loads(content_panel)['items']['page']['member_path']['id']
+
+        finally:
+            self.sem.release()
 
     def get_gs_member_id(self, member):
-        # get page_ data
-        response_panel = self.session.post('https://gurushots.com/rest/get_page_data', data={
-            'url': 'https://gurushots.com/'+member+'/photos'
-        })
-        content_panel = response_panel.content
+        self.sem.acquire()
+        try:
+            # get page_ data
+            response_panel = self.session.post('https://gurushots.com/rest/get_page_data', data={
+                'url': 'https://gurushots.com/' + member + '/photos'
+            })
+            content_panel = response_panel.content
 
-        return json.loads(content_panel)['items']['page']['member']['id']
+            return json.loads(content_panel)['items']['page']['member']['id']
+
+        finally:
+            self.sem.release()
+
 
     def get_following_photos(self, id, args):
-        response_panel = self.session.post('https://gurushots.com/rest/get_top_photos', data={
-            'id': id,
-            'filter': 'following',
-            'limit': 200,
-            'start': 0
-        })
-        content_panel = response_panel.content
-        return json.loads(content_panel)
+        self.self.sem.acquire()
+        try:
+            response_panel = self.session.post('https://gurushots.com/rest/get_top_photos', data={
+                'id': id,
+                'filter': 'following',
+                'limit': 200,
+                'start': 0
+            })
+            content_panel = response_panel.content
+            return json.loads(content_panel)
+
+        finally:
+            self.sem.release()
+
 
     def run(self):
         print ('Action')
@@ -1577,14 +1707,14 @@ def interactive_shell():
                 if 'bye' in result:
                     return
                 else:
-                    args.cmde = result
                     args = batch.parser.parse_args(result.split())
                     if args.cha != None:
                         args.cha = args.cha.replace('_','-')
+                    args.cmde = result
                     args.func(args)
         except Exception as _error:
             print(_error)
-            return
+            pass
 
 def main():
     with patch_stdout():
