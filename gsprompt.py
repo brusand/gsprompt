@@ -1035,11 +1035,18 @@ class GuruBatch():
             ranking["followers"][following["member"]["user_name"]]["swap"] = {}
             ranking["followers"][following["member"]["user_name"]]["entries"] = {}
             ranking["followers"][following["member"]["user_name"]]["top-rank"] = 0
+            ranking["followers"][following["member"]["user_name"]]["top-rank-level"] = 0
 
         ranking["followers"][following["member"]["user_name"]]["name"] = following["member"]["name"].encode('utf8');
         ranking["followers"][following["member"]["user_name"]]["rank"] = following["total"]["rank"];
-        if following["total"]["rank"] > int(ranking["followers"][following["member"]["user_name"]]["top-rank"]):
+        ranking["followers"][following["member"]["user_name"]]["rank-level"] = following["total"]["level"];
+        if following["total"]["rank"] > int(ranking["followers"][following["member"]["user_name"]]["top-rank"]) or int(following["total"]["level"]) >  ranking["followers"][following["member"]["user_name"]]["top-rank-level"]:
+            ranking["followers"][following["member"]["user_name"]]["events"][
+                'top-rank-' + following["total"]["rank"] + '-at-' + following["entries"][str(i)]['id']] = timeAtString
+            ranking["followers"][following["member"]["user_name"]]["events"][
+                'top-rank-' + following["total"]["rank"] + '-left-' + following["entries"][str(i)]['id']] = timeLeftString
             ranking["followers"][following["member"]["user_name"]]["top-rank"] = following["total"]["rank"]
+            ranking["followers"][following["member"]["user_name"]]["top-rank-level"] = following["total"]["level"]
 
         ranking["followers"][following["member"]["user_name"]]["votes"] = following["total"]["votes"];
         ranking["followers"][following["member"]["user_name"]]["percent"] = following["total"]["percent"]
@@ -1048,15 +1055,15 @@ class GuruBatch():
 
             if ranking["followers"][following["member"]["user_name"]]["entries"].get(str(i)) == None:
                 ranking["followers"][following["member"]["user_name"]]["entries"][str(i)] = {}
-                ranking["followers"][following["member"]["user_name"]]["entries"][str(i)]['id'] = following["entries"][i]['id']
-                ranking["followers"][following["member"]["user_name"]]["events"]["post-at-" + following["entries"][i]['id']] = timeAtString
-                ranking["followers"][following["member"]["user_name"]]["events"]["post-left-" + following["entries"][i]['id']] = timeLeftString
+                ranking["followers"][following["member"]["user_name"]]["entries"][str(i)]['id'] = following["entries"][str(i)]['id']
+                ranking["followers"][following["member"]["user_name"]]["events"]["post-at-" + following["entries"][str(i)]['id']] = timeAtString
+                ranking["followers"][following["member"]["user_name"]]["events"]["post-left-" + following["entries"][str(i)]['id']] = timeLeftString
 
                 if init == True:
-                    self.ranking_log(challenge["items"]["challenge"]["url"] , following["member"]["name"].encode('utf8'), following["total"]["rank"], following["total"]["votes"], timeAtString, timeLeftString, 'posted', following["entries"][i]['id'], following["entries"][i]['votes'])
+                    self.ranking_log(challenge["items"]["challenge"]["url"] , following["member"]["name"].encode('utf8'), following["total"]["rank"], following["total"]["votes"], timeAtString, timeLeftString, 'posted', following["entries"][str(i)]['id'], following["entries"][str(i)]['votes'])
 
                 else:
-                    self.ranking_log(challenge["items"]["challenge"]["url"] , following["member"]["name"].encode('utf8'), following["total"]["rank"], following["total"]["votes"], timeAtString, timeLeftString, 'post', following["entries"][i]['id'], following["entries"][i]['votes'])
+                    self.ranking_log(challenge["items"]["challenge"]["url"] , following["member"]["name"].encode('utf8'), following["total"]["rank"], following["total"]["votes"], timeAtString, timeLeftString, 'post', following["entries"][str(i)]['id'], following["entries"][istr(i)]['votes'])
 
             else:
                 if ranking["followers"][following["member"]["user_name"]]["entries"][str(i)]['id'] != following["entries"][i]['id']:
@@ -1091,10 +1098,11 @@ class GuruBatch():
 
 
             #mise a jour gp, vote
-            ranking["followers"][following["member"]["user_name"]]["entries"][str(i)]['votes'] = following["entries"][i]["votes"]
+            ranking["followers"][following["member"]["user_name"]]["entries"][str(i)]['votes'] = following["entries"][str(i)]["votes"]
 
             if  ranking["followers"][following["member"]["user_name"]]["entries"][str(i)].get('guru_pick')  and ranking["followers"][following["member"]["user_name"]]["entries"][str(i)]['guru_pick']  == False and following["entries"][i]["guru_pick"] == True:
-                ranking["followers"][following["member"]["user_name"]]["events"]['gp'+ following["entries"][i]['id']] = timeAtString
+                ranking["followers"][following["member"]["user_name"]]["events"]['gp-'+ following["entries"][str(i)]['id'] + '-at-'+ following["entries"][i]['id']]= timeAtString
+                ranking["followers"][following["member"]["user_name"]]["events"]['gp-'+ following["entries"][strr(i)]['id'] + '-left-'+ following["entries"][i]['id']] = timeLeftString
                 self.ranking_log(challenge["items"]["challenge"]["url"] , following["member"]["name"].encode('utf8'), following["total"]["rank"], following["total"]["votes"], timeAtString, timeLeftString, 'gp', following["entries"][i]['id'], following["entries"][i]['votes'])
 
 
@@ -1102,8 +1110,8 @@ class GuruBatch():
 
 
             if ranking["followers"][following["member"]["user_name"]]["entries"][str(i)].get('boost') and ranking["followers"][following["member"]["user_name"]]["entries"][str(i)]['boost']  == False and following["entries"][i]["boost"] == True:
-                ranking["followers"][following["member"]["user_name"]]["events"]['boost-at-'+ following["entries"][i]['id']] = timeAtString
-                ranking["followers"][following["member"]["user_name"]]["events"]['boost-left-'+ following["entries"][i]['id']] = timeLeftString
+                ranking["followers"][following["member"]["user_name"]]["events"]['boost-at-'+ following["entries"][str(i)]['id']]= timeAtString
+                ranking["followers"][following["member"]["user_name"]]["events"]['boost-left-'+ following["entries"][str(i)]['id']] = timeLeftString
                 self.ranking_log(challenge["items"]["challenge"]["url"] , following["member"]["name"].encode('utf8'), following["total"]["rank"], following["total"]["votes"], timeAtString, timeLeftString, 'boost', following["entries"][i]['id'], following["entries"][i]['votes'])
 
             ranking["followers"][following["member"]["user_name"]]["entries"][str(i)]['boost'] = following["entries"][i]["boost"]
@@ -1119,13 +1127,17 @@ class GuruBatch():
         else:
             return following["rank"];
 
+    def get_total_rank_level(self, following):
+        if following.get("total") != None:
+            return following["total"]["level"]
+        else:
+            return following["level"];
 
     def get_total_votes(self, following):
         if following.get("total") != None:
             return following["total"]["votes"];
         else:
             return following["entries"][0]['votes'];
-
 
     def ranking_log(self, challenge, member, rank, total_votes, timeAt, timeLeft, action, id, votes ):
         with open('ranking_' + challenge + '_file.csv', mode='a') as ranking_file:
