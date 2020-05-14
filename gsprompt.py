@@ -974,8 +974,7 @@ class GuruBatch():
                         self.ranking_add(self.challenges[section], args)
 
                     if self.challenges[section].as_bool('ranking'):
-                        self.action_exec_args(section, "ranking", '' , args)
-                        #self.ranking_start(args, section)
+                        self.action_exec_args(section, "ranking", section , args)
 
         if args.stop:
             self.ranking_stop(args)
