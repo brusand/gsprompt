@@ -130,7 +130,6 @@ class GuruBatch():
 
         self.parser_fill = self.subparsers.add_parser('fill')
         self.parser_fill.add_argument('fill', nargs='?', action="store", default='*')
-        self.parser_fill.add_argument('--cha', nargs='?', action="store", default='')
         self.parser_fill.add_argument('--list', action="store_true", default=False)
         self.parser_fill.add_argument('--player', nargs='?', action="store", default='')
         self.parser_fill.add_argument('--all', action="store_true", default=False)
