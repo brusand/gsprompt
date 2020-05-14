@@ -470,7 +470,7 @@ class GuruBatch():
                if action in "fill":
                    self.fill_challenge(challenge, value, args)
                if action in "vote":
-                   if args.photo is not '':
+                   if args.photo != '':
                        self.vote_photo(challenge, votes, args.photo)
                    else:
                         self.vote_challenge(challenge, value)
