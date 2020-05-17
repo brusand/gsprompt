@@ -35,14 +35,19 @@ json_rank_body = [
         "measurement": str(''),
         "tags": {
             "user": str(''),
-            "photo": str('')
+            "photo": str(''),
+            "event": str('')
         },
         "time": str(''),
         "fields": {
             "player": str(''),
+            "at": str('')
+            "left": str('')
             "rank": 0,
             "votes": 0,
-            "total": 0,
+            "total-votes": 0,
+            "total-rank": 0,
+            "total-rank-level": 0,
             "gp": False,
             "boost": False,
             "fill": False,
@@ -201,7 +206,6 @@ class GuruBatch():
         self.parser_submit.add_argument('--next', nargs='?', help='time left', default='')
         self.parser_submit.set_defaults(func=self.submit)
 
-
         self.parser_strategie = self.subparsers.add_parser('strategie')
         self.parser_strategie.add_argument('strategie', nargs='?', action="store", default='*')
         self.parser_strategie.add_argument('--player', nargs='?', action="store", default='')
@@ -282,6 +286,7 @@ class GuruBatch():
         self.challenges = ConfigObj('challenges-'+ self.player + '.ini')
 
         self.bye = False
+        self.client = InfluxDBClient(host, port, user, password, "gurushot")
 
         self.init_process(args)
 
@@ -904,9 +909,6 @@ class GuruBatch():
         else:
             user = self.config['players'][self.player]['user']
 
-        client = InfluxDBClient(host, port, user, password, "gurushot")
-        self.stillRankingRunning = True
-
         while self.stillRankingRunning:
             print('ranking', challenge)
             challenge_details = self.get_challenge(challenge);
@@ -929,7 +931,7 @@ class GuruBatch():
                     sleep(60)
                 else:
                     #ranking tous les 10 min
-                    sleep(10 * 60)
+                    sleep(1 * 60)
 
         # print" ended", 'Audience'
 
@@ -1018,14 +1020,29 @@ class GuruBatch():
                 if self.challenges[section].as_bool('ranking'):
                     print (section, ' ranking ',self.challenges[section].as_bool('ranking'))
 
+    def ranking_member_inlux(selfself, following, init: False):
+
+        #if new post
+
+        #else:
+            if votes != :
+
+            else:
+
+
+
     def ranking_member(self, challenge, following, init: False):
-        print(following["member"]["name"], following["total"]["rank"], following["total"]["votes"])
         ranking = ConfigObj('ranking-' + challenge["items"]["challenge"]["url"] +'.ini')
-        print(following["member"]["user_name"])
+
 
         timeleft = challenge["items"]["challenge"]["time_left"];
         timeLeftString = str("{}D:{}H:{}M".format(timeleft["days"], timeleft["hours"], timeleft["minutes"]))
         timeAtString = datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        total_rank_level = self.get_total_rank_level(following)
+        total_rank = self.get_total_rank(following)
+        total_votes = self.get_total_votes(following);
+
 
         if ranking['followers'].get(following["member"]["user_name"]) == None:
             ranking['followers'][following["member"]["user_name"]] = {}
@@ -1033,29 +1050,49 @@ class GuruBatch():
             ranking["followers"][following["member"]["user_name"]]["photos"] = {}
             ranking["followers"][following["member"]["user_name"]]["swap"] = {}
             ranking["followers"][following["member"]["user_name"]]["entries"] = {}
+
+
+            ranking["followers"][following["member"]["user_name"]]["name"] = following["member"]["name"].encode('utf8');
+            ranking["followers"][following["member"]["user_name"]]["rank"] = 0
+            ranking["followers"][following["member"]["user_name"]]["rank-level"] = 0
+
             ranking["followers"][following["member"]["user_name"]]["top-rank"] = 0
             ranking["followers"][following["member"]["user_name"]]["top-rank-level"] = 0
 
-        ranking["followers"][following["member"]["user_name"]]["name"] = following["member"]["name"].encode('utf8');
+            ranking["followers"][following["member"]["user_name"]]["votes"] = 0
+            ranking["followers"][following["member"]["user_name"]]["percent"] = 0
 
-        total_rank_level = self.get_total_rank_level(following)
-        total_rank = self.get_total_rank(following)
+
+        if total_votes == ranking["followers"][following["member"]["user_name"]]["votes"]:
+            return
+
+
 
         ranking["followers"][following["member"]["user_name"]]["rank"] = total_rank
         ranking["followers"][following["member"]["user_name"]]["rank-level"] = total_rank_level
 
+        ranking["followers"][following["member"]["user_name"]]["votes"] = self.get_total_votes(following);
+        ranking["followers"][following["member"]["user_name"]]["percent"] = self.get_total_percent(following);
+
+        ranking = json_rank_body
+        ranking[0]['measurement'] = 'ranking'
+        ranking[0]["tags"]['user'] = challenge["items"]["challenge"]["url"]
+        ranking[0]["time"] = timeAtString
+        ranking[0]["fields"]['player'] = following["member"]["name"].encode('utf8');
+        ranking[0]["fields"]['at'] = timeAtString
+        ranking[0]["fields"]['left'] = timeLeftString
+        ranking[0]["fields"]['total-votes'] = self.get_total_votes(following)
+        ranking[0]["fields"]['total-rank'] = total_rank
+        ranking[0]["fields"]['total-level'] = total_rank_level
+
+        #est-ce qu on a améliorer notre classement
         if total_rank < int(ranking["followers"][following["member"]["user_name"]]["top-rank"]) or  total_rank_level > int(ranking["followers"][following["member"]["user_name"]]["top-rank-level"]):
             ranking["followers"][following["member"]["user_name"]]["events"]['top-rank-' + str(total_rank) + '-' + str(total_rank_level) + '-at'] = timeAtString
             ranking["followers"][following["member"]["user_name"]]["events"]['top-rank-' + str(total_rank) + '-' + str(total_rank_level) + '-left'] = timeLeftString
 
-            ranking["followers"][following["member"]["user_name"]]["top-rank"] = total_rank
-            ranking["followers"][following["member"]["user_name"]]["top-rank-level"] = total_rank_level
-
-        ranking["followers"][following["member"]["user_name"]]["votes"] = self.get_total_votes(following);
-        ranking["followers"][following["member"]["user_name"]]["percent"] = self.get_total_percent(following);
 
         for i in range(len(following["entries"])):
-
+            # nouvelle photo ?
             if ranking["followers"][following["member"]["user_name"]]["entries"].get(str(i)) == None:
                 ranking["followers"][following["member"]["user_name"]]["entries"][str(i)] = {}
                 ranking["followers"][following["member"]["user_name"]]["entries"][str(i)]['id'] = following["entries"][i]['id']
@@ -1066,6 +1103,7 @@ class GuruBatch():
                         "posted-at-" + following["entries"][i]['id']] = timeAtString
                     ranking["followers"][following["member"]["user_name"]]["events"][
                         "posted-left-" + following["entries"][i]['id']] = timeLeftString
+                    ranking[0]["tags"]['event'] = 'posted'
                     self.ranking_log(challenge["items"]["challenge"]["url"] , following["member"]["name"].encode('utf8'), total_rank, total_rank_level, following["total"]["votes"], timeAtString, timeLeftString, 'posted', following["entries"][i]['id'], following["entries"][i]['votes'])
 
                 else:
@@ -1073,6 +1111,7 @@ class GuruBatch():
                         "post-at-" + following["entries"][i]['id']] = timeAtString
                     ranking["followers"][following["member"]["user_name"]]["events"][
                         "post-left-" + following["entries"][i]['id']] = timeLeftString
+                    ranking[0]["tags"]['event'] = 'post'
                     self.ranking_log(challenge["items"]["challenge"]["url"] , following["member"]["name"].encode('utf8'), total_rank, total_rank_level, following["total"]["votes"], timeAtString, timeLeftString, 'post', following["entries"][i]['id'], following["entries"][i]['votes'])
 
             else:
@@ -1090,6 +1129,7 @@ class GuruBatch():
                     ranking["followers"][following["member"]["user_name"]]["events"][
                         "swapped-left" + ranking["followers"][following["member"]["user_name"]]["entries"][str(i)]['id']] = timeLeftString
 
+
                     self.ranking_log(challenge["items"]["challenge"]["url"] , following["member"]["name"].encode('utf8'),
                                      total_rank, total_rank_level, self.get_total_votes(following), timeAtString,
                                      timeLeftString, 'swapped', ranking["followers"][following["member"]["user_name"]]["entries"][str(i)]['id'],
@@ -1099,7 +1139,7 @@ class GuruBatch():
                     ranking["followers"][following["member"]["user_name"]]["entries"][str(i)]['id'] = following["entries"][i]['id']
                     ranking["followers"][following["member"]["user_name"]]["events"]["post-" + following["entries"][i]['id'] +'-at'] = timeAtString
                     ranking["followers"][following["member"]["user_name"]]["events"]["post-" + following["entries"][i]['id'] +'-left']= timeLeftString
-
+                    ranking[0]["tags"]['event'] = 'post'
                     self.ranking_log(challenge["items"]["challenge"]["url"] , following["member"]["name"].encode('utf8'),
                                      total_rank, total_rank_level, self.get_total_votes(following), timeAtString,
                                      timeLeftString, 'post', ranking["followers"][following["member"]["user_name"]]["entries"][str(i)]['id'],
@@ -1113,6 +1153,7 @@ class GuruBatch():
             if  ranking["followers"][following["member"]["user_name"]]["entries"][str(i)].get('guru_pick')  and ranking["followers"][following["member"]["user_name"]]["entries"][str(i)]['guru_pick']  == False and following["entries"][i]["guru_pick"] == True:
                 ranking["followers"][following["member"]["user_name"]]["events"]['gp-'+ following["entries"][i]['id'] + '-at'] = timeAtString
                 ranking["followers"][following["member"]["user_name"]]["events"]['gp-'+ following["entries"][i]['id'] + '-left']  = timeLeftString
+                ranking[0]["tags"]['event'] = 'gp'
                 self.ranking_log(challenge["items"]["challenge"]["url"] , following["member"]["name"].encode('utf8'), total_rank, total_rank_level, following["total"]["votes"], timeAtString, timeLeftString, 'gp', following["entries"][i]['id'], following["entries"][i]['votes'])
 
 
@@ -1122,6 +1163,7 @@ class GuruBatch():
             if ranking["followers"][following["member"]["user_name"]]["entries"][str(i)].get('boost') and ranking["followers"][following["member"]["user_name"]]["entries"][str(i)]['boost']  == False and following["entries"][i]["boost"] == True:
                 ranking["followers"][following["member"]["user_name"]]["events"]['boost-'+ following["entries"][i]['id'] + '-at'] = timeAtString
                 ranking["followers"][following["member"]["user_name"]]["events"]['boost-'+ following["entries"][i]['id'] + '-left'] = timeLeftString
+                ranking[0]["tags"]['event'] = 'boost'
                 self.ranking_log(challenge["items"]["challenge"]["url"] , following["member"]["name"].encode('utf8'), total_rank, total_rank_level, following["total"]["votes"], timeAtString, timeLeftString, 'boost', following["entries"][i]['id'], following["entries"][i]['votes'])
 
             ranking["followers"][following["member"]["user_name"]]["entries"][str(i)]['boost'] = following["entries"][i]["boost"]
@@ -1129,7 +1171,25 @@ class GuruBatch():
                          total_rank, total_rank_level, following["total"]["votes"], timeAtString, timeLeftString, 'log',
                          following["entries"][i]['id'], following["entries"][i]['votes'])
 
+
+            #write influxdb photo
+
+
+            ranking[0]["tags"]['photo'] = following["entries"][i]['id']
+
+
+            ranking[0]["fields"]['rank'] = following["entries"][i]['rank']
+            ranking[0]["fields"]['votes'] = following["entries"][i]['votes']
+            ranking[0]["fields"]['gp'] = following["entries"][i]["guru_pick"]
+            ranking[0]["fields"]['boost'] = following["entries"][i]["boost"]
+
+
+
+            self.client.write_points(ranking)
+
         ranking.write()
+        #write inluxdb total
+
 
     def get_total_rank(self, following):
         if following.get("total") != None:
