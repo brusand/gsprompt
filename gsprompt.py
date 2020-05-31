@@ -52,7 +52,10 @@ json_rank_body = [
             "boost": False,
             "fill": False,
             "swapped": False,
-            "post": False
+            "post": False,
+            "ratio": 0,
+            "percent": 0,
+            "lu": 0,
         }
     }
  ]
@@ -1057,9 +1060,7 @@ class GuruBatch():
 
 
         if total_votes == int(ranking["followers"][following["member"]["user_name"]]["votes"]):
-            print(following["member"]["user_name"],'nop')
             return
-
 
 
         ranking["followers"][following["member"]["user_name"]]["rank"] = total_rank
@@ -1078,11 +1079,14 @@ class GuruBatch():
         db_ranking[0]["fields"]['total-votes'] = self.get_total_votes(following)
         db_ranking[0]["fields"]['total-rank'] = total_rank
         db_ranking[0]["fields"]['total-level'] = total_rank_level
+        db_ranking[0]["fields"]['total-percent'] = self.get_total_percent(following)
 
         #est-ce qu on a améliorer notre classement
         if total_rank < int(ranking["followers"][following["member"]["user_name"]]["top-rank"]) or  total_rank_level > int(ranking["followers"][following["member"]["user_name"]]["top-rank-level"]):
             ranking["followers"][following["member"]["user_name"]]["events"]['top-rank-' + str(total_rank) + '-' + str(total_rank_level) + '-at'] = timeAtString
             ranking["followers"][following["member"]["user_name"]]["events"]['top-rank-' + str(total_rank) + '-' + str(total_rank_level) + '-left'] = timeLeftString
+            ranking["followers"][following["member"]["user_name"]]["events"]['top-rank-' + str(total_rank) + '-' + str(total_rank_level) + '-votes'] = self.get_total_votes(following)
+            ranking["followers"][following["member"]["user_name"]]["events"]['top-rank-' + str(total_rank) + '-' + str(total_rank_level) + '-percent'] = self.get_total_percent(following)
 
 
         for i in range(len(following["entries"])):
@@ -1111,18 +1115,20 @@ class GuruBatch():
             else:
                 if ranking["followers"][following["member"]["user_name"]]["entries"][str(i)]['id'] != following["entries"][i]['id']:
                     #swapp existente
-                    ranking["followers"][following["member"]["user_name"]]["events"][
-                        "swapped-votes" + ranking["followers"][following["member"]["user_name"]]["entries"][str(i)]['id']] = following["entries"][i]["votes"]
+#                    ranking["followers"][following["member"]["user_name"]]["events"][
+#                        "swapped-votes-" + ranking["followers"][following["member"]["user_name"]]["entries"][str(i)]['id']] = ranking["followers"][following["member"]["user_name"]]["entries"][str(i)]['votes']]
 
                     ranking["followers"][following["member"]["user_name"]]["events"][
-                        "swapped-rank" + ranking["followers"][following["member"]["user_name"]]["entries"][str(i)]['id']] = self.get_total_rank(following)
+                        "swapped-rank-" + ranking["followers"][following["member"]["user_name"]]["entries"][str(i)]['id']] = self.get_total_rank(following)
 
                     ranking["followers"][following["member"]["user_name"]]["events"][
-                        "swapped-at" + ranking["followers"][following["member"]["user_name"]]["entries"][str(i)]['id']] = timeAtString
+                        "swapped-at-" + ranking["followers"][following["member"]["user_name"]]["entries"][str(i)]['id']] = timeAtString
 
                     ranking["followers"][following["member"]["user_name"]]["events"][
-                        "swapped-left" + ranking["followers"][following["member"]["user_name"]]["entries"][str(i)]['id']] = timeLeftString
+                        "swapped-left-" + ranking["followers"][following["member"]["user_name"]]["entries"][str(i)]['id']] = timeLeftString
 
+                    ranking["followers"][following["member"]["user_name"]]["events"][
+                        "swapped-lu-" + ranking["followers"][following["member"]["user_name"]]["entries"][str(i)]['id']] = self.get_total_lu(following)
 
                     self.ranking_log(challenge["items"]["challenge"]["url"] , following["member"]["name"].encode('utf8'),
                                      total_rank, total_rank_level, self.get_total_votes(following), timeAtString,
@@ -1140,9 +1146,27 @@ class GuruBatch():
                                      ranking["followers"][following["member"]["user_name"]]["entries"][str(i)]['votes'])
 
 
+            # est-ce qu on a améliorer notre classement
+            if total_rank < int(ranking["followers"][following["member"]["user_name"]][ "top-rank"]) or total_rank_level > int(
+                            ranking["followers"][following["member"]["user_name"]]["top-rank-level"]):
+                    ranking["followers"][following["member"]["user_name"]]["events"][
+                            'top-rank-' + str(total_rank) + '-' + str(total_rank_level) + '-at'] = timeAtString
+                    ranking["followers"][following["member"]["user_name"]]["events"][
+                        'top-rank-' + str(total_rank) + '-' + str(total_rank_level) + '-left'] = timeLeftString
+                    ranking["followers"][following["member"]["user_name"]]["events"][
+                        'top-rank-' + str(total_rank) + '-' + str(total_rank_level) + '-votes'] = self.get_total_votes(
+                        following)
+                    ranking["followers"][following["member"]["user_name"]]["events"][
+                        'top-rank-' + str(total_rank) + '-' + str(
+                            total_rank_level) + '-percent'] = self.get_total_percent(following)
+
+
 
             #mise a jour gp, vote
             ranking["followers"][following["member"]["user_name"]]["entries"][str(i)]['votes'] = following["entries"][i]["votes"]
+            ranking["followers"][following["member"]["user_name"]]["rank"] = total_rank
+            ranking["followers"][following["member"]["user_name"]]["rank-level"] = total_rank_level
+            ranking["followers"][following["member"]["user_name"]]["percent"] = self.get_total_percent(following)
 
             if  ranking["followers"][following["member"]["user_name"]]["entries"][str(i)].get('guru_pick')  and ranking["followers"][following["member"]["user_name"]]["entries"][str(i)]['guru_pick']  == False and following["entries"][i]["guru_pick"] == True:
                 ranking["followers"][following["member"]["user_name"]]["events"]['gp-'+ following["entries"][i]['id'] + '-at'] = timeAtString
