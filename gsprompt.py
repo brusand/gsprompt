@@ -83,6 +83,7 @@ class GuruBatch():
         self.parser = argparse.ArgumentParser(description='challenge')
         self.parser.add_argument('--cha', nargs='?', action="store", default='')
         self.parser.add_argument('--player', nargs='?', help='Player', default='')
+        self.parser.add_argument('--user', nargs='?', help='User', required=False)
         self.parser.add_argument('--xtoken', help='xtoken', required=False)
         self.parser.add_argument('--cmde', nargs='?', help='Cmde', default='')
         self.parser.add_argument('--shell ', action="store_true", default=False)
@@ -186,6 +187,7 @@ class GuruBatch():
         self.parser_swap.add_argument('--at', nargs='?', action="store", default='')
         self.parser_swap.add_argument('--left', nargs='?', action="store", default='')
         self.parser_swap.add_argument('--next', nargs='?', help='time left', default='')
+        self.parser_swap.add_argument('--top', nargs='?', type=int, help='if top', default=False)
         self.parser_swap.set_defaults(func=self.swap)
 
         self.parser_unlock = self.subparsers.add_parser('unlock')
@@ -277,15 +279,20 @@ class GuruBatch():
                 self.config['players'][args.player] = {}
                 self.config['players'][args.player]['last_challenge'] = ''
                 self.config['players'][args.player]['xtoken'] = ''
+                self.config['players'][args.player]['user_name'] = ''
 
             if args.xtoken is not  None:
                 self.config['players'][args.player]['xtoken'] = args.xtoken
+
+            if args.user is not  None:
+                self.config['players'][args.player]['user_name'] = args.user
 
             self.player = args.player
             self.config['player'] = args.player
             self.config.write()
 
         self.xtoken = self.config['players'][args.player]['xtoken']
+        self.user_name = self.config['players'][args.player]['user_name']
         self.connect()
         self.challenges = ConfigObj('challenges-'+ self.player + '.ini')
 
@@ -772,7 +779,14 @@ class GuruBatch():
     def swap_challenge(self, challenge, swap, args):
         challenge_details = self.get_challenge(challenge)
         if challenge_details["items"]["challenge"]["close_time"] != 0:
-            self.swap_photo(challenge_details["items"]["challenge"]["id"], swap, args.by)
+            if args.top and self.isTop(self.user_name, args.top) or not args:
+                self.swap_photo(challenge, challenge_details["items"]["challenge"]["id"], swap, args.by)
+
+    def isTop(self, challenge, user, top):
+        ranking = ConfigObj('ranking-' + challenge +'.ini')
+        if int(ranking["followers"][following["member"][user]]["top-rank"]) <= top and  int(ranking["followers"][following["member"][user]][ "top-rank-level"]) == 5:
+            return true
+        return false
 
     def boost_challenge(self, challenge, photo_id, args):
         challenge_details = self.get_challenge(challenge)
