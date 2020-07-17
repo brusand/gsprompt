@@ -151,6 +151,8 @@ class GuruBatch():
         self.parser_vote = self.subparsers.add_parser('vote')
         self.parser_vote.add_argument('vote', nargs='?', action="store", default='1')
         self.parser_vote.add_argument('--list', action="store_true", default=False)
+        self.parser_vote.add_argument('--novote', nargs='?', type=int, action="store", default=0)
+
         self.parser_vote.add_argument('--player', nargs='?', action="store", default='')
         self.parser_vote.add_argument('--all', action="store_true", default=False)
         self.parser_vote.add_argument('--at', nargs='?', action="store", default='')
@@ -480,6 +482,21 @@ class GuruBatch():
                             sleep(30)
                             pass
 
+           if 'novote' in args and args.novote:
+                votes = self.total_votes;
+                waiting = true;
+                self.ps_update(process_id, 'waiting for novote')
+                while waiting:
+                    sleep(args.novote)
+                    if votes == self.total_votes:
+                        waiting = false;
+                    else:
+                        votes = self.total_votes;
+
+                    if self.config['players'][self.player]['process'][process_id] == 'stop':
+                        self.ps_update(process_id, 'stopped')
+                        return
+
            self.ps_update(process_id, 'executing')
 
            if exec_action:
@@ -779,8 +796,8 @@ class GuruBatch():
     def swap_challenge(self, challenge, swap, args):
         challenge_details = self.get_challenge(challenge)
         if challenge_details["items"]["challenge"]["close_time"] != 0:
-            if args.top and self.isTop(self.user_name, args.top) or not args:
-                self.swap_photo(challenge, challenge_details["items"]["challenge"]["id"], swap, args.by)
+            if args.top and self.isTop(self.user_name, args.top) or not args.top:
+                self.swap_photo(challenge_details["items"]["challenge"]["id"], swap, args.by)
 
     def isTop(self, challenge, user, top):
         ranking = ConfigObj('ranking-' + challenge +'.ini')
@@ -1076,6 +1093,10 @@ class GuruBatch():
         if total_votes == int(ranking["followers"][following["member"]["user_name"]]["votes"]):
             return
 
+        if following["member"]["user_name"] == self.user_name:
+            self.total_rank = total_rank;
+            self.total_rank_level = total_rank_level;
+            self.total_votes = self.get_total_votes(following);
 
         ranking["followers"][following["member"]["user_name"]]["rank"] = total_rank
         ranking["followers"][following["member"]["user_name"]]["rank-level"] = total_rank_level
