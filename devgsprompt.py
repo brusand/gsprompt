@@ -1154,19 +1154,18 @@ class GuruBatch():
 
     def get_challenge(self, challenge):
         # Attempt to login to Facebook
-        response = self.session.post('https://gurushots.com/rest/get_page_data', data={
+        response = self.aio_post('https://gurushots.com/rest/get_page_data', data={
             'url': 'https://gurushots.com/challenge/' + challenge + '/details'
         })
-        content = response.content
-        return json.loads(content)
+        return json.loads(response)
 
     def get_member(self, challenge):
         # Attempt to login to Facebook
-        response = self.session.post('https://gurushots.com/rest/get_page_data', data={
+        response = self.aio.post('https://gurushots.com/rest/get_page_data', data={
             'url': 'https://gurushots.com/challenge/' + challenge + '/details'
         })
-        content = response.content
-        return json.loads(content)
+
+        return json.loads(response)
 
     def connect(self):
         # challenge = 4257
@@ -1201,9 +1200,8 @@ class GuruBatch():
             payload['c_id'] = challenge_id
             payload['el'] = 'my_challenge_current'
             payload['el_id'] = True
-            response = self.session.post('https://gurushots.com/rest/submit_to_challenge', data=payload)
-            content = response.content
-            return json.loads(content)
+            response = self.aio.post('https://gurushots.com/rest/submit_to_challenge', data=payload)
+            return json.loads(response)
         return {}
 
     def boost_photo(self, challenge_id, photo_id):
@@ -1212,9 +1210,8 @@ class GuruBatch():
             images.append(photo_id)
             payload = {'image_id': photo_id}
             payload['c_id'] = challenge_id
-            response = self.session.post('https://gurushots.com/rest/boost_photo', data=payload)
-            content = response.content
-            return json.loads(content)
+            response = self.aio_post('https://gurushots.com/rest/boost_photo', data=payload)
+            return json.loads(response)
         return {}
 
     def swap_photo(self, challenge_id, photo_id, new_photo_id):
@@ -1224,9 +1221,8 @@ class GuruBatch():
             payload['el_id'] = True
             payload['img_id'] = photo_id.encode()
             payload['new_img_id'] = new_photo_id.encode()
-            response = self.session.post('https://gurushots.com/rest/swap', data=payload)
-            content = response.content
-            return json.loads(content)
+            response = self.aio_post('https://gurushots.com/rest/swap', data=payload)
+            return json.loads(response)
         return {}
 
     def unlock_key(self, challenge_id, boost):
@@ -1236,39 +1232,34 @@ class GuruBatch():
                 payload['usage'] = 'EXPOSURE_BOOST'
             else:
                 payload['usage'] = 'JOIN_CHALLENGE'
-            response = self.session.post('https://gurushots.com/rest/key_unlock', data=payload)
-            content = response.content
-            return json.loads(content)
+            response = self.aio_post('https://gurushots.com/rest/key_unlock', data=payload)
+            return json.loads(response)
         return {}
 
     def get_followings(self, id, args):
         # get vote_ data
-        response_panel = self.session.post('https://gurushots.com/rest/get_following', data={
+        response_panel = self.aio_post('https://gurushots.com/rest/get_following', data={
             'id': id,
             'limit': args.limit,
             'start': args.start
         })
-        content_panel = response_panel.content
-        return json.loads(content_panel)
+        return json.loads(response)
 
     def get_member_id(self):
         # get vote_ data
-        response_panel = self.session.post('https://gurushots.com/rest/get_page_data', data={
+        response_panel = self.aio_post('https://gurushots.com/rest/get_page_data', data={
             'url': 'https://gurushots.com/challenges/my-challenges/current'
-        })
-        content_panel = response_panel.content
 
-        return json.loads(content_panel)['items']['page']['member_path']['id']
+        return json.loads(response_panel)['items']['page']['member_path']['id']
 
 
     def get_following_photos(self, id, args):
-        response_panel = self.session.post('https://gurushots.com/rest/get_top_photos', data={
+        response_panel = self.aio_post('https://gurushots.com/rest/get_top_photos', data={
             'id': id,
             'filter': 'following',
             'limit': 200,
             'start': 0
         })
-        content_panel = response_panel.content
         return json.loads(content_panel)
 
     def run(self):

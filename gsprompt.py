@@ -10,6 +10,7 @@ import json
 import sys
 import time
 import csv
+import os
 import threading
 from configobj import ConfigObj
 import numpy as np
@@ -24,6 +25,10 @@ from prompt_toolkit import prompt
 from prompt_toolkit.patch_stdout import patch_stdout
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.eventloop.defaults import use_asyncio_event_loop
+
+import aiohttp
+import nest_asyncio
+from syncer import sync
 
 #host = 'localhost'
 host = '10.194.132.195'
@@ -270,7 +275,7 @@ class GuruBatch():
 
         self.strategies = ConfigObj('strategies.ini')
 
-        self.sem = asyncio.Semaphore(1)
+        self.sem = asyncio.Semaphore(100)
 
     def init(self, args):
 
@@ -303,13 +308,18 @@ class GuruBatch():
 
         self.init_process(args)
 
+    def set_cb(self, f):
+        self.challenges = f.result
 
     def init_process(self, args):
         self.threads={};
         try:
             self.purge_challenge()
+
+
             challenges = self.get_joined_challenges()
-            challenges_open = self.get_open_challenges()
+            challenges_open = self. get_open_challenges()
+
             challenges["challenges"].extend(challenges_open["items"])
 
             for challenge in challenges["challenges"]:
@@ -324,6 +334,13 @@ class GuruBatch():
             self.ps_restart(args)
         except Exception as _error:
             print('error',  _error)
+
+
+    def async_get_joined_challenges(self):
+        loop = asyncio.get_event_loop()
+        tasks = [asyncio.ensure_future(self.aio_get_joined_challenges())]
+        loop.run_until_complete(asyncio.wait(tasks))
+        return tasks[0].result()
 
     def purge_challenge(self):
         #move closed challenge
@@ -347,60 +364,53 @@ class GuruBatch():
             self.challenges[url]['score'] = False
             self.challenges[url]['step'] = 0
 
-
-
-        #if self.challenge_details["items"]["challenge"]["close_time"] != 0:
-            #vote_data = self.get_votes_panel(self.challenge_details["items"]["challenge"]["url"])
-            #self.challenges[url]['jauge']  = str(vote_data["voting"]["exposure"]["exposure_factor"])
-
-        #self.challenges[url]['challenge_votes'] = self.challenge_details["items"]["challenge"]["votes"]
-        #self.challenges[url]['challenge_players'] = self.challenge_details["items"]["challenge"]["players"]
-        #self.challenges[url]['rank'] = "-1" #str(challenge["member"]["ranking"]["total"]["rank"])
-        #self.challenges[url]['votes'] =  "-1" #str(challenge["member"]["ranking"]["total"]["votes"])
-        #self.list.SetItem(self.index, 4, f"{self.challenge_details["items"]["challenge"]["time_left"]["days"]}D {self.challenge_details["items"]["challenge"]["time_left"]["hours"]}:{self.challenge_details["items"]["challenge"]["time_left"]["minutes"]}:{self.challenge_details["items"]["challenge"]["time_left"]["secondss"]}"
         timeleft = self.challenge_details["items"]["challenge"]["time_left"];
         self.challenges[url]['timeleft'] = "{}D {}H {}M".format(timeleft["days"], timeleft["hours"], timeleft["minutes"])
         self.challenges[url]['end'] = datetime.fromtimestamp(self.challenge_details["items"]["challenge"]["close_time"]).strftime("%d/%m/%Y, %H:%M")
         self.challenges.write()
 
     def get_votes_panel(self,  url):
-        # get vote_ data
-        self.sem.acquire()
-        try:
-            # work with shared resource
-            response_panel = self.session.post('https://gurushots.com/rest/get_vote_data', data={
-                'limit': 100,
-                'url': url
-            })
-            content_panel = response_panel.content
-            return json.loads(content_panel)
-        finally:
-            self.sem.release()
+        return  self.aio_post('https://gurushots.com/rest/get_vote_data', data={
+            'limit': 100,
+            'url': url
+        })
 
+
+    async def fetch_page(self, session, url):
+        async with session.post(url) as response:
+            assert response.status == 200
+            return await response.read()
+
+
+
+    async def aio_get_joined_challenges(self):
+        loop = asyncio.get_event_loop()
+        async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(verify_ssl=False), headers=self.aio_connect_session(), loop=loop) as session:
+            response = loop.run_until_complete(
+                self.fetch_page(session, 'https://gurushots.com/rest/get_member_joined_active_challenges'))
+            return json.loads(response)
 
     def get_joined_challenges(self):
-        self.sem.acquire()
-        try:
-            # work with shared resource
-            response = self.session.post('https://gurushots.com/rest/get_member_joined_active_challenges')
-            content = response.content
-            return json.loads(content)
-        finally:
-            self.sem.release()
+            return  self.aio_post('https://gurushots.com/rest/get_member_joined_active_challenges',{})
+
+    def async_get_open_challenges(self):
+        loop = asyncio.get_event_loop()
+        tasks = [asyncio.ensure_future(self.aio_get_open_challenges())]
+        loop.run_until_complete(asyncio.wait(tasks))
+        return tasks[0].result()
+
+    async def aio_get_open_challenges(self):
+        loop = asyncio.get_event_loop()
+        async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(verify_ssl=False), headers=self.aio_connect_session(), loop=loop) as session:
+            response = loop.run_until_complete(
+                self.fetch_page_data(session, 'https://gurushots.com/rest/get_member_challenges', data={'filter': 'open'}))
+            return json.loads(response)
 
 
     def get_open_challenges(self):
-        self.sem.acquire()
-        try:
-            # work with shared resource
-            response = self.session.post('https://gurushots.com/rest/get_member_challenges', data={
-                'filter': 'open'
-            })
-            content = response.content
-            return json.loads(content)
-        finally:
-            self.sem.release()
-
+        return self.aio_post('https://gurushots.com/rest/get_member_challenges', {
+            'filter': 'open'
+        })
 
     def ps(self, args):
         for section in self.challenges.keys():
@@ -480,7 +490,7 @@ class GuruBatch():
                                 waiting_time = False
                         except (RuntimeError, TypeError, NameError):
                             sleep(30)
-                            pass
+                            self.connect()
 
            if 'novote' in args and args.novote:
                 votes = self.total_votes;
@@ -553,11 +563,6 @@ class GuruBatch():
         self.threads[challenge].daemon = True  # Daemonize thread
         self.threads[challenge].start()
 
-        #self.execThread = threading.Thread(target=self.action_thread_args, name=challenge+action+str(value), kwargs=dict(challenge=challenge, action=action, value=str(value), args=args))
-        #self.execThread.daemon = True  # Daemonize thread
-        #self.execThread.start()
-
-
     def displayChallenge(self, challenge, args):
         challengeUrl = challenge
 
@@ -597,29 +602,7 @@ class GuruBatch():
             print ('challenge : ', name, '(', challenge[
                 "url"], ')', 'time-left', timeLeft, 'end at', timeEnd, 'votes')
 
-    def post_votes( self, challenge_details, votes):
-        self.sem.acquire()
-        try:
-            # work with shared resource
-            if self.session:
-                try:
-                    payload = {'tokens[' + str(id) + ']': value for id, value in enumerate(votes)}
-                    payload.update({'viewed_tokens[' + str(id) + ']': value for id, value in enumerate(votes)})
-                    payload['c_id'] = challenge_details["items"]["challenge"]["id"]
-                    payload[
-                        'c_token'] = "03AOLTBLR8mMuwAHd5TwbZo5KuuMZYDUVbM-gwQZgojsOHPf-NdlccOUjk6DXw6QE3thLUf6ASwqgQigw1-zTLI6-prjlTIS9ByBXVvePZkYXGwf6MDNIielvqiEWTemoMPWkKVSPme0EOALsd0MrbwDFHxbS02LGpt2u9GwieEKurIUmP7IKNxPEVBGwSR9UTDhWLfUimQK-yDKBVzIZYmbiEHM6gw85-9jDbtGtaAKcEGio83U6b4lmaGWVr8jhWYDKW49PDPrlc0hqYoV1nAOMySaIstamSZP56Zzp3ejo_1A0EqMOL1vGaG5aKt8a-tFY26Q9TRROHx8lVNcJoSBuBHFGUzl2n12JLjqAvJd6BcOweUMlhJapSrwSgHpRl5UQJ58G2AkWdMMvkwbplXZCqQ8cdv_HAzduBOwzutsfuubfCk0Fgqfb1wFK1FrfSGyRVhgrmci12xKmiIrIP1ZIOycaCXI7V0-sY5TW94mmjknYGwUiCdNI"
-                    response = self.session.post('https://gurushots.com/rest/submit_votes', data=payload)
-                    content = json.loads(response.content)
-                    if content['success'] == True:
-                        return content
-                    else:
-                        print(content['error_code'])
-                        return ''
-                except Exception as _error:
-                    print(_error)
-                    return ''
-        finally:
-            self.sem.release()
+
 
     def member_vote_photo_id(self, challenge, photo, args):
         challenge_details = self.get_challenge(challenge)
@@ -1575,33 +1558,15 @@ class GuruBatch():
         self.batchChallenge(key)
 
     def get_challenge(self, challenge):
-        # Attempt to login to Facebook
-        self.sem.acquire()
-        try:
-            # work with shared resource
-            response = self.session.post('https://gurushots.com/rest/get_page_data', data={
-                'url': 'https://gurushots.com/challenge/' + challenge + '/details'
-            })
-            content = response.content
-            return json.loads(content)
-
-        finally:
-            self.sem.release()
-
+        return self.aio_post('https://gurushots.com/rest/get_page_data', data={
+            'url': 'https://gurushots.com/challenge/' + challenge + '/details'
+        })
 
     def get_member(self, challenge):
-        self.sem.acquire()
-        try:
-            # work with shared resource
-            # Attempt to login to Facebook
-            response = self.session.post('https://gurushots.com/rest/get_page_data', data={
-                'url': 'https://gurushots.com/challenge/' + challenge + '/details'
-            })
-            content = response.content
-            return json.loads(content)
+        return self.session.post('https://gurushots.com/rest/get_page_data', data={
+            'url': 'https://gurushots.com/challenge/' + challenge + '/details'
+        })
 
-        finally:
-            self.sem.release()
 
     def connect(self):
         # challenge = 4257
@@ -1620,6 +1585,23 @@ class GuruBatch():
         finally:
             self.sem.release()
 
+    def connect_session(self, session):
+            session.headers.update({
+                'User-Agent': 'Mozilla/5.0 (X11; Linux i686; rv:39.0) Gecko/20100101 Firefox/39.0',
+                'x-api-version': '8',
+                'x-env': 'WEB',
+                'X-requested-with': 'XMLHttpRequest',
+                'X-token': self.xtoken
+            })
+
+    def aio_connect_session(self):
+            return {
+                'User-Agent': 'Mozilla/5.0 (X11; Linux i686; rv:39.0) Gecko/20100101 Firefox/39.0',
+                'x-api-version': '8',
+                'x-env': 'WEB',
+                'X-requested-with': 'XMLHttpRequest',
+                'X-token': self.xtoken
+            }
 
     def player_connect(self, args):
         # challenge = 4257
@@ -1642,158 +1624,92 @@ class GuruBatch():
 
 
     def submit_to_challenge(self, challenge_id, photo_id):
-        self.sem.acquire()
-        try:
-            # work with shared resource
-            if self.session:
-                images = []
-                images.append(photo_id)
-                payload = {'image_ids[' + str(id) + ']': value for id, value in enumerate(images)}
-                payload['c_id'] = challenge_id
-                payload['el'] = 'challenge_details'
-                payload['el_id'] = challenge_id
-                response = self.session.post('https://gurushots.com/rest/submit_to_challenge', data=payload)
-                content = response.content
-                _return = json.loads(content)
-                if _return["success"] == False:
-                    raise ('can t submit')
-                return _return
-            return {}
+        images = []
+        images.append(photo_id)
+        payload = {'image_ids[' + str(id) + ']': value for id, value in enumerate(images)}
+        payload['c_id'] = challenge_id
+        payload['el'] = 'challenge_details'
+        payload['el_id'] = challenge_id
+        return self.session.post('https://gurushots.com/rest/submit_to_challenge', data=payload)
+        _return = json.loads(response)
+        if _return["success"] == False:
+            raise ('can t submit')
+        return _return
 
-        finally:
-            self.sem.release()
 
 
     def boost_photo(self, challenge_id, photo_id):
-        self.sem.acquire()
-        try:
-            # work with shared resource
-            if self.session:
-                images = []
-                images.append(photo_id)
-                payload = {'image_id': photo_id}
-                payload['c_id'] = challenge_id
-                response = self.session.post('https://gurushots.com/rest/boost_photo', data=payload)
-                content = response.content
-                return json.loads(content)
-            return {}
-
-        finally:
-            self.sem.release()
-
-
-
+        images = []
+        images.append(photo_id)
+        payload = {'image_id': photo_id}
+        payload['c_id'] = challenge_id
+        #return self.aio_post('https://gurushots.com/rest/boost_photo', data=payload)
+        return self.session.post('https://gurushots.com/rest/boost_photo', data=payload)
 
     def swap_photo(self, challenge_id, photo_id, new_photo_id):
-        self.sem.acquire()
-        try:
-            # work with shared resource
-            if self.session:
                 payload = {'c_id': challenge_id}
                 payload['el'] = 'my_challenge_current'
                 payload['el_id'] = True
                 payload['img_id'] = photo_id.encode()
                 payload['new_img_id'] = new_photo_id.encode()
+                #response = self.aio_post('https://gurushots.com/rest/swap', data=payload)
                 response = self.session.post('https://gurushots.com/rest/swap', data=payload)
                 content = response.content
                 return json.loads(content)
-            return {}
-
-        finally:
-            self.sem.release()
-
-
+                #return json.loads(response)
 
     def unlock_key(self, challenge_id, boost):
-        self.sem.acquire()
-        try:
-            # work with shared resource
-            if self.session:
-                payload = {'c_id': challenge_id}
-                if boost:
-                    payload['usage'] = 'EXPOSURE_BOOST'
-                else:
-                    payload['usage'] = 'JOIN_CHALLENGE'
-                response = self.session.post('https://gurushots.com/rest/key_unlock', data=payload)
-                content = response.content
-                return json.loads(content)
-            return {}
-
-        finally:
-            self.sem.release()
+            payload = {'c_id': challenge_id}
+            if boost:
+                payload['usage'] = 'EXPOSURE_BOOST'
+            else:
+                payload['usage'] = 'JOIN_CHALLENGE'
+            returnresponse_panel('https://gurushots.com/rest/key_unlock', data=payload)
+            content = response.content
+            return json.loads(response)
 
 
 
     def get_challenge_followings(self, c_id):
-        self.sem.acquire()
-        try:
-            # work with shared resource
-            # get vote_ data
-            response_panel = self.session.post('https://gurushots.com/rest/get_top_photographer', data={
-                'c_id': c_id,
-                'filter': 'following',
-                'init': 'true',
-                'limit': 200,
-                'start': 0
-            })
-            content_panel = response_panel.content
-            return json.loads(content_panel)
+        return  self.aio_post('https://gurushots.com/rest/get_top_photographer', data={
+            'c_id': c_id,
+            'filter': 'following',
+            'init': 'true',
+            'limit': 200,
+            'start': 0
+        })
 
-        finally:
-            self.sem.release()
 
 
     def get_followings(self, id, args):
-        self.sem.acquire()
-        try:
-            # work with shared resource
-            # get vote_ data
-            response_panel = self.session.post('https://gurushots.com/rest/get_following', data={
-                'id': id,
-                'limit': args.limit,
-                'start': args.start
-            })
-            content_panel = response_panel.content
-            return json.loads(content_panel)
-
-        finally:
-            self.sem.release()
-
+        return self.aio_post('https://gurushots.com/rest/get_following', data={
+            'id': id,
+            'limit': args.limit,
+            'start': args.start
+        })
 
 
     def get_member_id(self):
-        self.sem.acquire()
-        try:
-            # work with shared resource
-            response_panel = self.session.post('https://gurushots.com/rest/get_page_data', data={
-                'url': 'https://gurushots.com/challenges/my-challenges/current'
-            })
-            content_panel = response_panel.content
+        response_panel = self.aio_post('https://gurushots.com/rest/get_page_data', data={
+            'url': 'https://gurushots.com/challenges/my-challenges/current'
+        })
+        return json.loads(response_panel)['items']['page']['member_path']['id']
 
-            return json.loads(content_panel)['items']['page']['member_path']['id']
-
-        finally:
-            self.sem.release()
 
     def get_gs_member_id(self, member):
-        self.sem.acquire()
-        try:
-            # get page_ data
-            response_panel = self.session.post('https://gurushots.com/rest/get_page_data', data={
-                'url': 'https://gurushots.com/' + member + '/photos'
-            })
-            content_panel = response_panel.content
+        # get page_ data
+        response_panel = self.aio_post('https://gurushots.com/rest/get_page_data', data={
+            'url': 'https://gurushots.com/' + member + '/photos'
+        })
+        return json.loads(response_panel)['items']['page']['member']['id']
 
-            return json.loads(content_panel)['items']['page']['member']['id']
 
-        finally:
-            self.sem.release()
 
 
     def get_following_photos(self, id, args):
         self.self.sem.acquire()
         try:
-            response_panel = self.session.post('https://gurushots.com/rest/get_top_photos', data={
+            response_panel = self.aio_post('https://gurushots.com/rest/get_top_photos', {
                 'id': id,
                 'filter': 'following',
                 'limit': 200,
@@ -1818,6 +1734,45 @@ class GuruBatch():
     def prompt(self, args):
         print('Hello!')
 
+    def post_votes( self, challenge_details, votes):
+        payload = {'tokens[' + str(id) + ']': value for id, value in enumerate(votes)}
+        payload.update({'viewed_tokens[' + str(id) + ']': value for id, value in enumerate(votes)})
+        payload['c_id'] = challenge_details["items"]["challenge"]["id"]
+        payload['c_token'] = "03AOLTBLR8mMuwAHd5TwbZo5KuuMZYDUVbM-gwQZgojsOHPf-NdlccOUjk6DXw6QE3thLUf6ASwqgQigw1-zTLI6-prjlTIS9ByBXVvePZkYXGwf6MDNIielvqiEWTemoMPWkKVSPme0EOALsd0MrbwDFHxbS02LGpt2u9GwieEKurIUmP7IKNxPEVBGwSR9UTDhWLfUimQK-yDKBVzIZYmbiEHM6gw85-9jDbtGtaAKcEGio83U6b4lmaGWVr8jhWYDKW49PDPrlc0hqYoV1nAOMySaIstamSZP56Zzp3ejo_1A0EqMOL1vGaG5aKt8a-tFY26Q9TRROHx8lVNcJoSBuBHFGUzl2n12JLjqAvJd6BcOweUMlhJapSrwSgHpRl5UQJ58G2AkWdMMvkwbplXZCqQ8cdv_HAzduBOwzutsfuubfCk0Fgqfb1wFK1FrfSGyRVhgrmci12xKmiIrIP1ZIOycaCXI7V0-sY5TW94mmjknYGwUiCdNI"
+
+        #response = self.aio_post('https://gurushots.com/rest/get_member_challenges', payload)
+        #return response
+        self.session.post('https://gurushots.com/rest/get_member_challenges', payload)
+        response = self.session.post('https://gurushots.com/rest/submit_votes', data=payload)
+        content = response.content
+        return json.loads(content)
+
+    def aio_post(self, url, data):
+        loop = asyncio.new_event_loop()
+        try:
+            return loop.run_until_complete(
+                self.aio_async_post(url, data))
+
+        finally:
+            try:
+                loop.run_until_complete(loop.shutdown_asyncgens())
+            finally:
+                asyncio.set_event_loop(None)
+                loop.close()
+
+    async def aio_async_post(self, url, payload):
+        loop = asyncio.get_event_loop()
+        async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(verify_ssl=False),
+                                         headers=self.aio_connect_session(), loop=loop, trust_env=True) as session:
+            response = loop.run_until_complete(
+                self.fetch_page_data(session, url, payload))
+            return json.loads(response)
+
+    async def fetch_page_data(self, session, url, data):
+            async with session.post(url, data=data) as response:
+                assert response.status == 200;
+                content =  await response.read()
+                return content
 
 def interactive_shell():
     """
@@ -1851,11 +1806,19 @@ def interactive_shell():
             print(_error)
             pass
 
-def main():
+
+async def interractive():
     with patch_stdout():
-         interactive_shell()
-         print('Quitting event loop. Bye.')
+        interactive_shell()
+        print('Quitting event loop. Bye.')
+
+def main():
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(interractive())
+    loop.close()
 
 
 if __name__ == '__main__':
-    main()
+    nest_asyncio.apply()
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(main())
